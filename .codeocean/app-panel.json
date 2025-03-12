@@ -1,0 +1,41 @@
+{
+	"version": 1,
+	"named_parameters": true,
+	"parameters": [
+		{
+			"id": "toMdDnDTPOzExcmY",
+			"name": "Input Directory",
+			"param_name": "input_dir",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "/data",
+			"required": true
+		},
+		{
+			"id": "FoJemQAIOIGV7C6W",
+			"name": "Output Directory",
+			"param_name": "output_dir",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "/results",
+			"required": true
+		},
+		{
+			"id": "RvnPrdAdYVN7uDDc",
+			"name": "Temporary Directory",
+			"param_name": "temp_dir",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "/scratch",
+			"required": true
+		},
+		{
+			"id": "3FZQM86UuSxJlthw",
+			"name": "Debug",
+			"param_name": "debug",
+			"type": "text",
+			"value_type": "string",
+			"default_value": "=False"
+		}
+	]
+}

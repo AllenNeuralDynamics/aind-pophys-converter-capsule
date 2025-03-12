@@ -7,14 +7,28 @@ from pathlib import Path
 from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
                                                     BergamoTiffStitcher)
 from aind_pophys_converter.mesoscope_splitter import (TiffSplitterCLI,
-                                                      find_split_directories,
-                                                      from_args)
+                                                      find_split_directories)
+from pydantic_settings import BaseSettings
+
+
+class JobSettings(BaseSettings, cli_parse_args=True):
+    """
+    Settings for the job.
+    """
+
+    input_dir: str
+    temp_dir: str = None
+    output_dir: str = None
+    debug: bool = False
 
 
 def run():
     """basic run function"""
-    input_dir = Path("/data")
-    output_dir = Path("/results")
+    job_settings = JobSettings()
+    input_dir = Path(job_settings.input_dir)
+    output_dir = Path(job_settings.output_dir)
+    debug = job_settings.debug
+    temp_dir = Path(job_settings.temp_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
     with open(session_fp) as f:
@@ -34,14 +48,18 @@ def run():
         bergamo_stitcher = BergamoTiffStitcher(bergamo_settings)
         bergamo_stitcher.run_converter()
     elif "multiplane" in data_description["name"]:
-        sys_args = sys.argv[1:]
-        runner = from_args(sys_args)
-        split_directories = find_split_directories(Path(runner.input_dir))
+        job_settings = JobSettings(
+            input_dir=input_dir,
+            temp_dir=temp_dir,
+            output_dir=output_dir,
+            debug=debug,
+        )
+        split_directories = find_split_directories(input_dir)
         if len(split_directories) == 0:
-            runner = TiffSplitterCLI(runner)
+            runner = TiffSplitterCLI(job_settings)
             runner.run_job()
         else:
-            output_dir = Path(runner.output_dir)
+            output_dir = Path(output_dir)
             for split_dir in split_directories:
                 new_directory = output_dir / split_dir
                 new_directory.mkdir(parents=True, exist_ok=True)

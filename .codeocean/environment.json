@@ -19,6 +19,10 @@
 			"packages": [
 				{
 					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@initial-build#egg=aind-pophys-converter"
+				},
+				{
+					"name": "scanimage-tiff-reader",
+					"version": "1.4.1.4"
 				}
 			],
 			"options": {},

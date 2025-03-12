@@ -21,11 +21,12 @@ def run():
         session = json.load(f)
     with open(data_description_fp) as f:
         data_description = json.load(f)
+    pophys_dir = next(input_dir.rglob("pophys/"))
     if "Bergamo" in session.get("rig_id", ""):
         unique_id = data_description["name"]
         unique_id = "_".join(str(unique_id).split("_")[-3:])
         bergamo_settings = BergamoSettings(
-            input_dir=input_dir,
+            input_dir=pophys_dir,
             output_dir=output_dir,
             unique_id=unique_id,
             session_fp=session_fp,

@@ -48,12 +48,7 @@ def run():
         bergamo_stitcher = BergamoTiffStitcher(bergamo_settings)
         bergamo_stitcher.run_converter()
     elif "multiplane" in data_description["name"]:
-        job_settings = JobSettings(
-            input_dir=input_dir,
-            temp_dir=temp_dir,
-            output_dir=output_dir,
-            debug=debug,
-        )
+        job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(input_dir)
         if len(split_directories) == 0:
             runner = TiffSplitterCLI(job_settings)

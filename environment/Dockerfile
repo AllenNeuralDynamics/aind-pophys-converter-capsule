@@ -1,4 +1,4 @@
-# hash:sha256:e4337dbb689eb3736bead6839be39d19a531ddd565bc89959a09f7e271564d14
+# hash:sha256:2de79c0c13814bc2f30b9c44b574f2690f50bbd8c9d8c5debaf7c1db3514dfcb
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -14,5 +14,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install -U --no-cache-dir \
+    pydantic-settings==2.8.1 \
     scanimage-tiff-reader==1.4.1.4 \
     -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@initial-build#egg=aind-pophys-converter

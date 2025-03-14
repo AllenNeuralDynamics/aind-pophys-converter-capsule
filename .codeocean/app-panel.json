@@ -35,7 +35,7 @@
 			"param_name": "debug",
 			"type": "text",
 			"value_type": "string",
-			"default_value": "=False"
+			"default_value": "false"
 		}
 	]
 }

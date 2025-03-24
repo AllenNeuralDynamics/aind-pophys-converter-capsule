@@ -31,6 +31,7 @@ def run():
     temp_dir = Path(job_settings.temp_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
+    
     with open(session_fp) as f:
         session = json.load(f)
     with open(data_description_fp) as f:

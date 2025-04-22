@@ -34,8 +34,7 @@ def run():
         data_description = json.load(f)
     pophys_dir = next(input_dir.rglob("pophys/"))
     if "Bergamo" in session.get("rig_id", ""):
-        unique_id = data_description["name"]
-        unique_id = "_".join(str(unique_id).split("_")[-3:])
+        unique_id = "MOS2_3_0" # TODO: read from CCF when available
         bergamo_settings = BergamoSettings(
             input_dir=pophys_dir,
             output_dir=output_dir,

@@ -35,6 +35,8 @@ def run():
     pophys_dir = next(input_dir.rglob("pophys/"))
     if "Bergamo" in session.get("rig_id", ""):
         unique_id = "MOs2_3_0" # TODO: read from CCF when available
+        output_dir = output_dir / unique_id
+        output_dir.mkdir(exist_ok=True)
         bergamo_settings = BergamoSettings(
             input_dir=pophys_dir,
             output_dir=output_dir,

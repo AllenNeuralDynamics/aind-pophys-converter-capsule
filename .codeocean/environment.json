@@ -14,10 +14,6 @@
 				{
 					"name": "pydantic-settings",
 					"version": "2.8.1"
-				},
-				{
-					"name": "pynwb",
-					"version": "3.0.0"
 				}
 			],
 			"options": {},

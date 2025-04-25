@@ -6,15 +6,6 @@
 		"git_ask_pass": true
 	},
 	"installers": {
-		"apt": {
-			"packages": [
-				{
-					"name": "vim",
-					"version": "2:8.2.3995-1ubuntu2.23"
-				}
-			],
-			"install_software_properties_common": true
-		},
 		"pip": {
 			"packages": [
 				{
@@ -25,8 +16,8 @@
 					"version": "2.8.1"
 				},
 				{
-					"name": "scanimage-tiff-reader",
-					"version": "1.4.1.4"
+					"name": "pynwb",
+					"version": "3.0.0"
 				}
 			],
 			"options": {},

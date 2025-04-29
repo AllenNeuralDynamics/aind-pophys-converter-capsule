@@ -2,8 +2,8 @@
 	"version": 1,
 	"attached_datasets": [
 		{
-			"id": "19765f0d-2a1b-4b2b-bead-43e244db1c5e",
-			"mount": "multiplane-ophys_787495_2025-04-24_12-04-09"
+			"id": "9ce3eb5e-b013-4f3b-ae9a-5338d4c69ad3",
+			"mount": "single-plane-ophys_784746_2025-04-25_16-41-23"
 		}
 	]
 }

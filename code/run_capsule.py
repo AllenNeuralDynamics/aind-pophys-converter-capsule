@@ -1,7 +1,6 @@
 """top level run script"""
 
 import json
-import sys
 from pathlib import Path
 
 from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
@@ -9,7 +8,6 @@ from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
 from aind_pophys_converter.mesoscope_splitter import (TiffSplitterCLI,
                                                       find_split_directories)
 from pydantic_settings import BaseSettings
-
 
 class JobSettings(BaseSettings, cli_parse_args=True):
     """
@@ -27,8 +25,6 @@ def run():
     job_settings = JobSettings()
     input_dir = Path(job_settings.input_dir)
     output_dir = Path(job_settings.output_dir)
-    debug = job_settings.debug
-    temp_dir = Path(job_settings.temp_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
     
@@ -38,8 +34,9 @@ def run():
         data_description = json.load(f)
     pophys_dir = next(input_dir.rglob("pophys/"))
     if "Bergamo" in session.get("rig_id", ""):
-        unique_id = data_description["name"]
-        unique_id = "_".join(str(unique_id).split("_")[-3:])
+        unique_id = "MOp2_3_0" # TODO: read from CCF when available
+        output_dir = output_dir / unique_id
+        output_dir.mkdir(exist_ok=True)
         bergamo_settings = BergamoSettings(
             input_dir=pophys_dir,
             output_dir=output_dir,

@@ -28,6 +28,9 @@
 				{
 					"name": "pydantic-settings",
 					"version": "2.8.1"
+				},
+				{
+					"name": "requests"
 				}
 			],
 			"options": {},

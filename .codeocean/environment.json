@@ -30,7 +30,8 @@
 					"version": "2.8.1"
 				},
 				{
-					"name": "requests"
+					"name": "requests",
+					"version": "2.32.4"
 				}
 			],
 			"options": {},

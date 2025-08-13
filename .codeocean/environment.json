@@ -23,8 +23,7 @@
 		"pip": {
 			"packages": [
 				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter#egg=aind-pophys-converter",
-					"version": "84f6a09cd1f37eff79109f9bb07a553150404db2"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter#egg=aind-pophys-converter"
 				},
 				{
 					"name": "pydantic-settings",
@@ -33,29 +32,6 @@
 			],
 			"options": {},
 			"pre_install_options": {}
-		},
-		"vscode": {
-			"packages": [
-				{
-					"name": "REditorSupport.R"
-				},
-				{
-					"name": "continue.continue"
-				},
-				{
-					"name": "ms-python.python"
-				},
-				{
-					"name": "ms-toolsai.jupyter"
-				},
-				{
-					"name": "reageyao.bioSyntax"
-				},
-				{
-					"name": "saoudrizwan.claude-dev"
-				}
-			],
-			"version": "4.95.3"
 		}
 	}
 }

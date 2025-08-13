@@ -18,4 +18,4 @@ RUN apt-get update \
 
 RUN pip install -U --no-cache-dir \
     pydantic-settings==2.8.1 \
-    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter#egg=aind-pophys-converter
+    git+https://github.com/AllenNeuralDynamics/aind-pophys-converter#egg=aind-pophys-converter

@@ -23,7 +23,8 @@
 		"pip": {
 			"packages": [
 				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter#egg=aind-pophys-converter"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter#egg=aind-pophys-converter",
+					"version": "84f6a09cd1f37eff79109f9bb07a553150404db2"
 				},
 				{
 					"name": "pydantic-settings",

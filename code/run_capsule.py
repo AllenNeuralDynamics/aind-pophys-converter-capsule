@@ -60,7 +60,8 @@ def pair_exp_ids_with_avg_depth_pngs(
     output_dir: Path,
 ) -> None:
     """
-    Pair each exp_id with the closest averaged-depth PNG slice based on session.json scanfield_z.
+    Pair each exp_id with the closest
+    averaged-depth PNG slice based on session.json scanfield_z.
     Writes side-by-side merged PNGs and a QCEvaluation JSON.
     """
     output_dir.mkdir(exist_ok=True, parents=True)
@@ -79,9 +80,8 @@ def pair_exp_ids_with_avg_depth_pngs(
     png_paths = list(avg_png_dir.glob("*.png"))
     z_to_png = {abs(float(p.stem)): p for p in png_paths}
 
-    metrics: List[QCMetric] = []
+    metrics = []
 
-    # --- Pair exp_ids to FOVs and PNGs ---
     for i, exp_id in enumerate(sorted(exp_ids, key=int)):
         if i >= len(fovs):
             print(f"Skipping exp_id {exp_id}: no matching FOV")
@@ -98,7 +98,8 @@ def pair_exp_ids_with_avg_depth_pngs(
         raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
         if not raw_tif_path.exists():
             print(
-                f"Skipping exp_id {exp_id}: raw TIFF not found at {raw_tif_path}"
+                f"Skipping exp_id {exp_id}: "
+                f"raw TIFF not found at {raw_tif_path}"
             )
             continue
         raw_img = Image.open(raw_tif_path)
@@ -132,7 +133,8 @@ def pair_exp_ids_with_avg_depth_pngs(
     if metrics:
         evaluation = QCEvaluation(
             name="Merged Raw vs Averaged Depth PNGs",
-            description="QC evaluation of merged raw TIFFs and closest averaged depth PNG slices",
+            description="QC evaluation of merged raw TIFFs and "
+            "closest averaged depth PNG slices",
             metrics=metrics,
             modality=Modality.POPHYS,
             stage=Stage.RAW,
@@ -179,11 +181,12 @@ def write_avg_depth_slices(splitter, output_dir: Path):
 
 def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
     """
-    Grab all experiment IDs from files like <exp_id>_depth.tif in a pophys directory.
+    Grab all experiment IDs from files like
+    <exp_id>_depth.tif in a pophys directory.
     Returns a sorted list of IDs as strings.
     """
     tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
-    exp_ids: List[str] = []
+    exp_ids = []
 
     for p in pophys_dir.glob("*_depth.tif"):
         m = tif_pattern.search(p.name)
@@ -244,7 +247,8 @@ def run():
             avg_depth_path = avg_depth_files[0]
             avg_output_dir = output_dir / "averaged_depths"
             print(
-                f"Processing averaged depth TIFF: {avg_depth_path} → {avg_output_dir}"
+                f"Processing averaged depth TIFF: \
+                {avg_depth_path} → {avg_output_dir}"
             )
 
             exp_ids = get_exp_ids_from_pophys(pophys_dir)

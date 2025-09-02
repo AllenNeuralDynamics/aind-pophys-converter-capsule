@@ -25,7 +25,7 @@ from aind_data_schema.core.quality_control import (
     QCStatus,
     Status,
 )
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pydantic_settings import BaseSettings
 from typing import Dict, Any, List, Tuple
 
@@ -50,6 +50,48 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     temp_dir: str = None
     output_dir: str = None
     debug: bool = False
+
+
+def add_border_and_label(
+    img: Image.Image, label: str, border: int = 5
+) -> Image.Image:
+    """Add a border and a text label to an image (bottom-center)."""
+    # Add border
+    bordered = ImageOps.expand(img, border=border, fill="white")
+
+    # Convert to RGB for drawing text
+    if bordered.mode != "RGB":
+        bordered = bordered.convert("RGB")
+
+    draw = ImageDraw.Draw(bordered)
+
+    # Try to load a truetype font, fall back to default
+    try:
+        font = ImageFont.truetype("DejaVuSans.ttf", 20)
+    except IOError:
+        font = ImageFont.load_default()
+
+    # --- Measure text size (compatibility across Pillow versions) ---
+    try:
+        # Preferred in modern Pillow
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+    except AttributeError:
+        # Fallback for older Pillow
+        text_w, text_h = font.getsize(label)
+
+    # Position: bottom center
+    x = (bordered.width - text_w) // 2
+    y = bordered.height - text_h - border - 5
+
+    # Draw background rectangle for readability
+    draw.rectangle(
+        [x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill="white"
+    )
+    draw.text((x, y), label, fill="red", font=font)
+
+    return bordered
 
 
 def pair_exp_ids_with_avg_depth_pngs(
@@ -105,10 +147,14 @@ def pair_exp_ids_with_avg_depth_pngs(
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
 
+        # Add borders + bottom-center labels
+        raw_img = add_border_and_label(raw_img, "Child")
+        avg_img = add_border_and_label(avg_img, "Parent")
+
         # Merge side-by-side
         total_width = raw_img.width + avg_img.width
         max_height = max(raw_img.height, avg_img.height)
-        merged = Image.new("L", (total_width, max_height))
+        merged = Image.new("RGB", (total_width, max_height), color="black")
         merged.paste(raw_img, (0, 0))
         merged.paste(avg_img, (raw_img.width, 0))
 
@@ -230,6 +276,7 @@ def run():
         # --- normal multiplane splitting ---
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
+        """
         if len(split_directories) == 0:
             runner = TiffSplitterCLI(job_settings)
             runner.run_job()
@@ -240,7 +287,7 @@ def run():
                 new_directory.mkdir(parents=True, exist_ok=True)
                 with open(new_directory / f"{split_dir}.txt", "w") as f:
                     f.write(f"{split_dir}.h5")
-
+        """
         # --- averaged depth handling ---
         avg_depth_files = list(pophys_dir.glob("*_averaged_depth.tiff"))
         if avg_depth_files:

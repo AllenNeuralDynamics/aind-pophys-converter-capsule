@@ -8,12 +8,23 @@ import re
 from datetime import datetime as dt
 
 
-from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
-                                                    BergamoTiffStitcher)
-from aind_pophys_converter.mesoscope_splitter import (TiffSplitterCLI,
-                                                      find_split_directories)
+from aind_pophys_converter.bergamo_stitcher import (
+    BergamoSettings,
+    BergamoTiffStitcher,
+)
+from aind_pophys_converter.mesoscope_splitter import (
+    TiffSplitterCLI,
+    find_split_directories,
+)
 from aind_pophys_converter.mesoscope_splitter import AvgImageTiffSplitter
-from aind_data_schema.core.quality_control import QCMetric, QCEvaluation, Stage, Modality, QCStatus, Status
+from aind_data_schema.core.quality_control import (
+    QCMetric,
+    QCEvaluation,
+    Stage,
+    Modality,
+    QCStatus,
+    Status,
+)
 from PIL import Image, ImageDraw, ImageFont
 from pydantic_settings import BaseSettings
 from typing import Dict, Any, List, Tuple
@@ -29,6 +40,7 @@ def PendingStatus():
         timestamp=dt.now(seattle_tz).isoformat(),
     )
 
+
 class JobSettings(BaseSettings, cli_parse_args=True):
     """
     Settings for the job.
@@ -38,7 +50,6 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     temp_dir: str = None
     output_dir: str = None
     debug: bool = False
-
 
 
 def pair_exp_ids_with_avg_depth_pngs(
@@ -86,7 +97,9 @@ def pair_exp_ids_with_avg_depth_pngs(
         # Load raw plane TIFF for this exp_id
         raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
         if not raw_tif_path.exists():
-            print(f"Skipping exp_id {exp_id}: raw TIFF not found at {raw_tif_path}")
+            print(
+                f"Skipping exp_id {exp_id}: raw TIFF not found at {raw_tif_path}"
+            )
             continue
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
@@ -116,7 +129,6 @@ def pair_exp_ids_with_avg_depth_pngs(
         )
         metrics.append(metric)
 
-    # --- Write combined QCEvaluation JSON ---
     if metrics:
         evaluation = QCEvaluation(
             name="Merged Raw vs Averaged Depth PNGs",
@@ -129,6 +141,7 @@ def pair_exp_ids_with_avg_depth_pngs(
         with open(eval_out_path, "w") as f:
             json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
         print(f"Saved evaluation JSON -> {eval_out_path}")
+
 
 def write_avg_depth_slices(splitter, output_dir: Path):
     """
@@ -146,20 +159,22 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         tiff_path = output_dir / f"{z_value:.1f}.tif"
         png_path = output_dir / f"{z_value:.1f}.png"
 
-        # Write TIFF
-        splitter.write_output_file(i_roi=roi_idx, z_value=z_value, output_path=tiff_path)
+        splitter.write_output_file(
+            i_roi=roi_idx, z_value=z_value, output_path=tiff_path
+        )
         print(f"Saved TIFF: {tiff_path}")
 
         # Convert TIFF to PNG
         img_array = np.array(Image.open(tiff_path))
         img_min, img_max = img_array.min(), img_array.max()
         if img_max > img_min:
-            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(np.uint8)
+            img_scaled = (
+                (img_array - img_min) / (img_max - img_min) * 255
+            ).astype(np.uint8)
         else:
             img_scaled = np.zeros_like(img_array, dtype=np.uint8)
         Image.fromarray(img_scaled).save(png_path)
         print(f"Saved PNG: {png_path}")
-
 
 
 def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
@@ -176,9 +191,12 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
             exp_ids.append(m.group(1))
 
     if not exp_ids:
-        raise FileNotFoundError(f"No '*_depth.tif' files found in {pophys_dir}")
+        raise FileNotFoundError(
+            f"No '*_depth.tif' files found in {pophys_dir}"
+        )
 
     return sorted(exp_ids, key=int)
+
 
 def run():
     """basic run function"""
@@ -187,14 +205,14 @@ def run():
     output_dir = Path(job_settings.output_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
-    
+
     with open(session_fp) as f:
         session = json.load(f)
     with open(data_description_fp) as f:
         data_description = json.load(f)
     pophys_dir = next(input_dir.rglob("pophys/"))
     if "Bergamo" in session.get("rig_id", ""):
-        unique_id = "MOp2_3_0" # TODO: read from CCF when available
+        unique_id = "MOp2_3_0"  # TODO: read from CCF when available
         output_dir = output_dir / unique_id
         output_dir.mkdir(exist_ok=True)
         bergamo_settings = BergamoSettings(
@@ -220,18 +238,26 @@ def run():
                 with open(new_directory / f"{split_dir}.txt", "w") as f:
                     f.write(f"{split_dir}.h5")
 
-
         # --- averaged depth handling ---
         avg_depth_files = list(pophys_dir.glob("*_averaged_depth.tiff"))
         if avg_depth_files:
             avg_depth_path = avg_depth_files[0]
             avg_output_dir = output_dir / "averaged_depths"
-            print(f"Processing averaged depth TIFF: {avg_depth_path} → {avg_output_dir}")
+            print(
+                f"Processing averaged depth TIFF: {avg_depth_path} → {avg_output_dir}"
+            )
 
             exp_ids = get_exp_ids_from_pophys(pophys_dir)
             splitter = AvgImageTiffSplitter(avg_depth_path)
             write_avg_depth_slices(splitter, Path("/results/tiff_vals"))
-            pair_exp_ids_with_avg_depth_pngs(exp_ids,session_fp,pophys_dir,Path("/results/tiff_vals"),Path("/results/matched_tiff_vals"))
+            pair_exp_ids_with_avg_depth_pngs(
+                exp_ids,
+                session_fp,
+                pophys_dir,
+                Path("/results/tiff_vals"),
+                Path("/results/matched_tiff_vals"),
+            )
+
 
 if __name__ == "__main__":
     run()

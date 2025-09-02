@@ -276,7 +276,6 @@ def run():
         # --- normal multiplane splitting ---
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
-        """
         if len(split_directories) == 0:
             runner = TiffSplitterCLI(job_settings)
             runner.run_job()
@@ -287,7 +286,6 @@ def run():
                 new_directory.mkdir(parents=True, exist_ok=True)
                 with open(new_directory / f"{split_dir}.txt", "w") as f:
                     f.write(f"{split_dir}.h5")
-        """
         # --- averaged depth handling ---
         avg_depth_files = list(pophys_dir.glob("*_averaged_depth.tiff"))
         if avg_depth_files:

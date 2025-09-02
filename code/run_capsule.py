@@ -161,6 +161,25 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         print(f"Saved PNG: {png_path}")
 
 
+
+def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
+    """
+    Grab all experiment IDs from files like <exp_id>_depth.tif in a pophys directory.
+    Returns a sorted list of IDs as strings.
+    """
+    tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
+    exp_ids: List[str] = []
+
+    for p in pophys_dir.glob("*_depth.tif"):
+        m = tif_pattern.search(p.name)
+        if m:
+            exp_ids.append(m.group(1))
+
+    if not exp_ids:
+        raise FileNotFoundError(f"No '*_depth.tif' files found in {pophys_dir}")
+
+    return sorted(exp_ids, key=int)
+
 def run():
     """basic run function"""
     job_settings = JobSettings()
@@ -210,9 +229,10 @@ def run():
             avg_output_dir = output_dir / "averaged_depths"
             print(f"Processing averaged depth TIFF: {avg_depth_path} → {avg_output_dir}")
 
+            exp_ids = get_exp_ids_from_pophys(pophys_dir)
             splitter = AvgImageTiffSplitter(avg_depth_path)
             write_avg_depth_slices(splitter, Path("/results/tiff_vals"))
-            pair_exp_ids_with_avg_depth_pngs(['1454221950','1454221952','1454221953','1454221955','1454221956','1454221958','1454221959','1454221961'],session_fp,pophys_dir,Path("/results/tiff_vals"),Path("/results/matched_tiff_vals"))
+            pair_exp_ids_with_avg_depth_pngs(exp_ids,session_fp,pophys_dir,Path("/results/tiff_vals"),Path("/results/matched_tiff_vals"))
 
 if __name__ == "__main__":
     run()

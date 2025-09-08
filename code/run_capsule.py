@@ -7,7 +7,6 @@ import pytz
 import re
 from datetime import datetime as dt
 
-
 from aind_pophys_converter.bergamo_stitcher import (
     BergamoSettings,
     BergamoTiffStitcher,
@@ -27,9 +26,7 @@ from aind_data_schema.core.quality_control import (
 )
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pydantic_settings import BaseSettings
-from typing import Dict, Any, List, Tuple
-
-from tifffile import TiffFile
+from typing import List
 
 
 def PendingStatus():
@@ -55,7 +52,23 @@ class JobSettings(BaseSettings, cli_parse_args=True):
 def add_border_and_label(
     img: Image.Image, label: str, border: int = 5
 ) -> Image.Image:
-    """Add a border and a text label to an image (bottom-center)."""
+    """
+    Add a border and a text label to an image (bottom-center).
+
+    Parameters
+    ----------
+    img : Image.Image
+        Input PIL image.
+    label : str
+        Text label to add at the bottom center.
+    border : int, optional
+        Border size in pixels (default is 5).
+
+    Returns
+    -------
+    Image.Image
+        New image with border and label added.
+    """
     # Add border
     bordered = ImageOps.expand(img, border=border, fill="white")
 
@@ -102,9 +115,26 @@ def pair_exp_ids_with_avg_depth_pngs(
     output_dir: Path,
 ) -> None:
     """
-    Pair each exp_id with the closest
-    averaged-depth PNG slice based on session.json scanfield_z.
-    Writes side-by-side merged PNGs and a QCEvaluation JSON.
+    For each experiment ID, find the closest matching averaged-depth PNG
+    based on z-value, merge side-by-side with borders and labels, and
+    save the result. Also create a QC evaluation JSON.
+
+    Parameters
+    ----------
+    exp_ids : List[str]
+        List of experiment IDs to process.
+    session_json_path : Path
+        Path to the session.json file containing FOV info.
+    pophys_dir : Path
+        Directory containing raw TIFF files named <exp_id>_depth.tif.
+    avg_png_dir : Path
+        Directory containing averaged-depth PNG files named by z-value.
+    output_dir : Path
+        Directory to save merged PNGs and QC evaluation JSON.
+
+    Returns
+    -------
+    None
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -196,9 +226,16 @@ def write_avg_depth_slices(splitter, output_dir: Path):
     Write each slice from the averaged-depth TIFF as a separate TIFF
     named by its z-value.
 
-    Args:
-        splitter: AvgImageTiffSplitter instance for the averaged TIFF.
-        output_dir: folder to save per-slice TIFFs.
+    Parameters
+    ----------
+    splitter : AvgImageTiffSplitter
+        Initialized splitter for the averaged-depth TIFF.
+    output_dir : Path
+        Directory to write the output TIFF and PNG files.
+
+    Returns
+    -------
+    None
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -230,6 +267,16 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
     Grab all experiment IDs from files like
     <exp_id>_depth.tif in a pophys directory.
     Returns a sorted list of IDs as strings.
+
+    Parameters
+    ----------
+    pophys_dir : Path
+        Directory containing raw TIFF files named <exp_id>_depth.tif.
+
+    Returns
+    -------
+    List[str]
+        Sorted list of experiment IDs as strings.
     """
     tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
     exp_ids = []

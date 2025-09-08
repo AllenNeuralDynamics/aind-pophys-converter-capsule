@@ -340,7 +340,7 @@ def run():
             avg_output_dir = output_dir / "averaged_depths"
             print(
                 f"Processing averaged depth TIFF: \
-                {avg_depth_path} -> {avg_output_dir}"
+                {avg_depth_path} -> {output_dir}"
             )
 
             exp_ids = get_exp_ids_from_pophys(pophys_dir)

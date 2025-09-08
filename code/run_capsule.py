@@ -340,17 +340,17 @@ def run():
             avg_output_dir = output_dir / "averaged_depths"
             print(
                 f"Processing averaged depth TIFF: \
-                {avg_depth_path} → {avg_output_dir}"
+                {avg_depth_path} -> {avg_output_dir}"
             )
 
             exp_ids = get_exp_ids_from_pophys(pophys_dir)
             splitter = AvgImageTiffSplitter(avg_depth_path)
-            write_avg_depth_slices(splitter, Path("/results/tiff_vals"))
+            write_avg_depth_slices(splitter, output_dir)
             pair_exp_ids_with_avg_depth_pngs(
                 exp_ids,
                 session_fp,
                 pophys_dir,
-                Path("/results/tiff_vals"),
+                output_dir,
                 Path("/results/matched_tiff_vals"),
             )
 

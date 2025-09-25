@@ -9,7 +9,6 @@ from typing import List
 
 import numpy as np
 import pytz
-import tifffile
 from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
                                                    QCMetric, QCStatus, Stage,
                                                    Status)
@@ -293,23 +292,23 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
     -------
     None
     """
-    avg_depth_files = next(pophys_dir.glob("*_vasculature.tiff"), None)
-    if not avg_depth_files:
+    vasculature_fp = next(pophys_dir.glob("*_vasculature.tif"), None)
+    if not vasculature_fp:
         logging.info("No averaged depth TIFF files found for vasculature creation.")
         return
+    vasculature_output_dir = output_dir / "valsulature"
+    vasculature_output_dir.mkdir()
+    vasculature_output_fp = vasculature_output_dir /  "vasculature.png"
+    with Image.open(vasculature_fp) as im:
+        im.save(vasculature_output_fp)
 
-    avg_depth_path = avg_depth_files[0]
-    vasculature_image = tifffile.imread(avg_depth_path)
-
-    vasculature_img = Image.fromarray(vasculature_image)
-    vasculature_output_path = output_dir / "vasculature.png"
-    vasculature_img.save(vasculature_output_path)
-    logging.info(f"Saved vasculature image -> {vasculature_output_path}")
+    logging.info(f"Saved vasculature image -> {vasculature_output_fp}")
     metric = QCMetric(
         name="Vasculature_image",
         description="Vasculature image to assess brain health and window clarity",
         status_history=[PendingStatus()],
-        reference=str(vasculature_output_path),
+        reference=str(vasculature_output_fp),
+        value=None
     )
     evaluation = QCEvaluation(
         name="Window Health and Brain Clarity",
@@ -318,7 +317,7 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
         modality=Modality.POPHYS,
         stage=Stage.RAW,
     )
-    eval_out_path = output_dir / "vasculature_evaluation.json"
+    eval_out_path = vasculature_output_dir / "vasculature_evaluation.json"
     with open(eval_out_path, "w") as f:
         json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
     logging.info(f"Saved evaluation JSON -> {eval_out_path}")
@@ -350,7 +349,7 @@ def run():
         bergamo_stitcher = BergamoTiffStitcher(bergamo_settings)
         bergamo_stitcher.run_converter()
     elif "multiplane" in data_description["name"]:
-        # --- normal multiplane splitting ---
+        # # --- normal multiplane splitting ---
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
         if len(split_directories) == 0:

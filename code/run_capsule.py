@@ -184,6 +184,11 @@ def pair_exp_ids_with_avg_depth_pngs(
         merged = Image.new("RGB", (total_width, max_height), color="black")
         merged.paste(raw_img, (0, 0))
         merged.paste(avg_img, (raw_img.width, 0))
+        try:
+            png_path.unlink()
+            print(f"Deleted original averaged PNG -> {png_path}")
+        except Exception as e:
+            print(f"Failed to delete {png_path}: {e}")
 
         # Save merged PNG
         merged_path = output_dir / f"{exp_id}_merged.png"

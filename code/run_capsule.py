@@ -27,7 +27,8 @@ from aind_data_schema.core.quality_control import (
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pydantic_settings import BaseSettings
 from typing import List
-
+import tifffile
+import logging
 
 def PendingStatus():
     seattle_tz = pytz.timezone("America/Los_Angeles")
@@ -293,6 +294,50 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
 
     return sorted(exp_ids, key=int)
 
+def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
+    """
+    Create a vasculature image from the averaged depth TIFF file.
+
+    Parameters
+    ----------
+    pophys_dir : Path
+        Directory containing the averaged depth TIFF file.
+    output_dir : Patch
+        Save path for vasculuture image
+
+    Returns
+    -------
+    None
+    """
+    avg_depth_files = next(pophys_dir.glob("*_vasculature.tiff"), None)
+    if not avg_depth_files:
+        logging.info("No averaged depth TIFF files found for vasculature creation.")
+        return
+
+    avg_depth_path = avg_depth_files[0]
+    vasculature_image = tifffile.imread(avg_depth_path)
+
+    vasculature_img = Image.fromarray(vasculature_image)
+    vasculature_output_path = output_dir / "vasculature.png"
+    vasculature_img.save(vasculature_output_path)
+    logging.info(f"Saved vasculature image -> {vasculature_output_path}")
+    metric = QCMetric(
+        name="Vasculature_image",
+        description="Vasculature image to assess brain health and window clarity",
+        status_history=[PendingStatus()],
+        reference=str(vasculature_output_path),
+    )
+    evaluation = QCEvaluation(
+        name="Window Health and Brain Clarity",
+        description="QC evaluation of vasculature image",
+        metrics=[metric],
+        modality=Modality.POPHYS,
+        stage=Stage.RAW,
+    )
+    eval_out_path = output_dir / "vasculature_evaluation.json"
+    with open(eval_out_path, "w") as f:
+        json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
+    logging.info(f"Saved evaluation JSON -> {eval_out_path}")
 
 def run():
     """basic run function"""
@@ -353,7 +398,7 @@ def run():
                 output_dir,
                 Path("/results/matched_tiff_vals"),
             )
-
+            create_vasculature(pophys_dir, output_dir)
 
 if __name__ == "__main__":
     run()

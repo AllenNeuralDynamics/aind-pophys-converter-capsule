@@ -49,11 +49,12 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     debug: bool = False
 
 
-def add_border_and_label(
-    img: Image.Image, label: str, border: int = 5
-) -> Image.Image:
+def add_border_and_label(img: Image.Image,
+                         label: str,
+                         border: int = 5) -> Image.Image:
     """
-    Add a border and a text label to an image (bottom-center).
+    Add a border and a text label to an image
+    (bottom-center).
 
     Parameters
     ----------
@@ -99,9 +100,8 @@ def add_border_and_label(
     y = bordered.height - text_h - border - 5
 
     # Draw background rectangle for readability
-    draw.rectangle(
-        [x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill="white"
-    )
+    draw.rectangle([x - 4, y - 2, x + text_w + 4, y + text_h + 2],
+                   fill="white")
     draw.text((x, y), label, fill="red", font=font)
 
     return bordered
@@ -169,10 +169,7 @@ def pair_exp_ids_with_avg_depth_pngs(
         # Load raw plane TIFF for this exp_id
         raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
         if not raw_tif_path.exists():
-            print(
-                f"Skipping exp_id {exp_id}: "
-                f"raw TIFF not found at {raw_tif_path}"
-            )
+            print(f"raw TIFF not found at {raw_tif_path}")
             continue
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
@@ -223,19 +220,8 @@ def pair_exp_ids_with_avg_depth_pngs(
 
 def write_avg_depth_slices(splitter, output_dir: Path):
     """
-    Write each slice from the averaged-depth TIFF as a separate TIFF
-    named by its z-value.
-
-    Parameters
-    ----------
-    splitter : AvgImageTiffSplitter
-        Initialized splitter for the averaged-depth TIFF.
-    output_dir : Path
-        Directory to write the output TIFF and PNG files.
-
-    Returns
-    -------
-    None
+    Write each slice from the averaged-depth TIFF as a PNG.
+    The intermediate TIFF is deleted immediately.
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -244,20 +230,27 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         tiff_path = output_dir / f"{z_value:.1f}.tif"
         png_path = output_dir / f"{z_value:.1f}.png"
 
+        # Write TIFF temporarily
         splitter.write_output_file(
             i_roi=roi_idx, z_value=z_value, output_path=tiff_path
         )
-        print(f"Saved TIFF: {tiff_path}")
 
-        # Convert TIFF to PNG
+        # Read array from TIFF
         img_array = np.array(Image.open(tiff_path))
+
+        # Delete TIFF immediately
+        tiff_path.unlink(missing_ok=True)
+
+        # Normalize and scale to 8-bit
         img_min, img_max = img_array.min(), img_array.max()
         if img_max > img_min:
-            img_scaled = (
-                (img_array - img_min) / (img_max - img_min) * 255
-            ).astype(np.uint8)
+            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(
+                np.uint8
+            )
         else:
             img_scaled = np.zeros_like(img_array, dtype=np.uint8)
+
+        # Save PNG only
         Image.fromarray(img_scaled).save(png_path)
         print(f"Saved PNG: {png_path}")
 
@@ -287,9 +280,7 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
             exp_ids.append(m.group(1))
 
     if not exp_ids:
-        raise FileNotFoundError(
-            f"No '*_depth.tif' files found in {pophys_dir}"
-        )
+        raise FileNotFoundError(f"No '_depth.tif' files found in {pophys_dir}")
 
     return sorted(exp_ids, key=int)
 
@@ -337,7 +328,6 @@ def run():
         avg_depth_files = list(pophys_dir.glob("*_averaged_depth.tiff"))
         if avg_depth_files:
             avg_depth_path = avg_depth_files[0]
-            avg_output_dir = output_dir / "averaged_depths"
             print(
                 f"Processing averaged depth TIFF: \
                 {avg_depth_path} -> {output_dir}"

@@ -3,6 +3,7 @@
 import json
 import logging
 import re
+import tempfile
 from datetime import datetime as dt
 from pathlib import Path
 from typing import List
@@ -178,6 +179,13 @@ def pair_exp_ids_with_avg_depth_pngs(
         merged.save(merged_path)
         print(f"Saved merged image for exp_id {exp_id} -> {merged_path}")
 
+        # --- Delete the original averaged PNG ---
+        try:
+            png_path.unlink()
+            print(f"Deleted original averaged PNG -> {png_path}")
+        except Exception as e:
+            print(f"Failed to delete {png_path}: {e}")
+
         # --- Add QC Metric ---
         metric = QCMetric(
             name=f"ExpID {exp_id} merged view",
@@ -207,42 +215,24 @@ def pair_exp_ids_with_avg_depth_pngs(
 
 
 def write_avg_depth_slices(splitter, output_dir: Path):
-    """
-    Write each slice from the averaged-depth TIFF as a separate TIFF
-    named by its z-value.
-
-    Parameters
-    ----------
-    splitter : AvgImageTiffSplitter
-        Initialized splitter for the averaged-depth TIFF.
-    output_dir : Path
-        Directory to write the output TIFF and PNG files.
-
-    Returns
-    -------
-    None
-    """
     output_dir.mkdir(exist_ok=True, parents=True)
 
     for roi_idx, z_int in splitter.roi_z_int_manifest:
         z_value = splitter._z_from_int(z_int)
-        tiff_path = output_dir / f"{z_value:.1f}.tif"
         png_path = output_dir / f"{z_value:.1f}.png"
 
-        splitter.write_output_file(
-            i_roi=roi_idx, z_value=z_value, output_path=tiff_path
-        )
-        print(f"Saved TIFF: {tiff_path}")
+        with tempfile.NamedTemporaryFile(suffix=".tif") as tmp_tif:
+            tmp_path = Path(tmp_tif.name)
+            splitter.write_output_file(i_roi=roi_idx, z_value=z_value, output_path=tmp_path)
+            img_array = np.array(Image.open(tmp_path))
 
-        # Convert TIFF to PNG
-        img_array = np.array(Image.open(tiff_path))
+        # Normalize and save PNG
         img_min, img_max = img_array.min(), img_array.max()
         if img_max > img_min:
-            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(
-                np.uint8
-            )
+            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(np.uint8)
         else:
             img_scaled = np.zeros_like(img_array, dtype=np.uint8)
+
         Image.fromarray(img_scaled).save(png_path)
         print(f"Saved PNG: {png_path}")
 
@@ -352,6 +342,7 @@ def run():
         # # --- normal multiplane splitting ---
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
+        '''
         if len(split_directories) == 0:
             runner = TiffSplitterCLI(job_settings)
             runner.run_job()
@@ -362,6 +353,7 @@ def run():
                 new_directory.mkdir(parents=True, exist_ok=True)
                 with open(new_directory / f"{split_dir}.txt", "w") as f:
                     f.write(f"{split_dir}.h5")
+        '''
         # --- averaged depth handling ---
         avg_depth_files = list(pophys_dir.glob("*_averaged_depth.tiff"))
         if avg_depth_files:

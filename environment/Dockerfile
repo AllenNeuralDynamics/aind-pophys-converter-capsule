@@ -1,4 +1,4 @@
-# hash:sha256:c1daad6a163906e672ca980304d5f7fb3520f8bc80bbf1b36b658a47de27247c
+# hash:sha256:575f98b0bd2d2be52cd6f3f74531ffc7329b203575e26b91d2c38eb83b61a39b
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -17,4 +17,5 @@ RUN --mount=type=secret,id=git-access-token \
     aind-data-schema==1.4.0 \
     aind-data-schema-models==0.7.5 \
     pydantic-settings==2.8.1 \
+    tifffile==2024.2.12 \
     -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter@84f6a09cd1f37eff79109f9bb07a553150404db2#egg=aind-pophys-converter

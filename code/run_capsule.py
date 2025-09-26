@@ -1,32 +1,24 @@
 """top level run script"""
 
 import json
-import numpy as np
-from pathlib import Path
-import pytz
+import logging
 import re
 from datetime import datetime as dt
+from pathlib import Path
+from typing import List
 
-from aind_pophys_converter.bergamo_stitcher import (
-    BergamoSettings,
-    BergamoTiffStitcher,
-)
-from aind_pophys_converter.mesoscope_splitter import (
-    TiffSplitterCLI,
-    find_split_directories,
-)
-from aind_pophys_converter.mesoscope_splitter import AvgImageTiffSplitter
-from aind_data_schema.core.quality_control import (
-    QCMetric,
-    QCEvaluation,
-    Stage,
-    Modality,
-    QCStatus,
-    Status,
-)
+import numpy as np
+import pytz
+from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
+                                                   QCMetric, QCStatus, Stage,
+                                                   Status)
+from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
+                                                    BergamoTiffStitcher)
+from aind_pophys_converter.mesoscope_splitter import (AvgImageTiffSplitter,
+                                                      TiffSplitterCLI,
+                                                      find_split_directories)
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pydantic_settings import BaseSettings
-from typing import List
 
 
 def PendingStatus():
@@ -49,9 +41,7 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     debug: bool = False
 
 
-def add_border_and_label(
-    img: Image.Image, label: str, border: int = 5
-) -> Image.Image:
+def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image.Image:
     """
     Add a border and a text label to an image (bottom-center).
 
@@ -99,9 +89,7 @@ def add_border_and_label(
     y = bordered.height - text_h - border - 5
 
     # Draw background rectangle for readability
-    draw.rectangle(
-        [x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill="white"
-    )
+    draw.rectangle([x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill="white")
     draw.text((x, y), label, fill="red", font=font)
 
     return bordered
@@ -169,10 +157,7 @@ def pair_exp_ids_with_avg_depth_pngs(
         # Load raw plane TIFF for this exp_id
         raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
         if not raw_tif_path.exists():
-            print(
-                f"Skipping exp_id {exp_id}: "
-                f"raw TIFF not found at {raw_tif_path}"
-            )
+            print(f"Skipping exp_id {exp_id}: " f"raw TIFF not found at {raw_tif_path}")
             continue
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
@@ -253,9 +238,9 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         img_array = np.array(Image.open(tiff_path))
         img_min, img_max = img_array.min(), img_array.max()
         if img_max > img_min:
-            img_scaled = (
-                (img_array - img_min) / (img_max - img_min) * 255
-            ).astype(np.uint8)
+            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(
+                np.uint8
+            )
         else:
             img_scaled = np.zeros_like(img_array, dtype=np.uint8)
         Image.fromarray(img_scaled).save(png_path)
@@ -287,11 +272,55 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
             exp_ids.append(m.group(1))
 
     if not exp_ids:
-        raise FileNotFoundError(
-            f"No '*_depth.tif' files found in {pophys_dir}"
-        )
+        raise FileNotFoundError(f"No '*_depth.tif' files found in {pophys_dir}")
 
     return sorted(exp_ids, key=int)
+
+
+def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
+    """
+    Create a vasculature image from the averaged depth TIFF file.
+
+    Parameters
+    ----------
+    pophys_dir : Path
+        Directory containing the averaged depth TIFF file.
+    output_dir : Patch
+        Save path for vasculuture image
+
+    Returns
+    -------
+    None
+    """
+    vasculature_fp = next(pophys_dir.glob("*_vasculature.tif"), None)
+    if not vasculature_fp:
+        logging.info("No averaged depth TIFF files found for vasculature creation.")
+        return
+    vasculature_output_dir = output_dir / "valsulature"
+    vasculature_output_dir.mkdir()
+    vasculature_output_fp = vasculature_output_dir /  "vasculature.png"
+    with Image.open(vasculature_fp) as im:
+        im.save(vasculature_output_fp)
+
+    logging.info(f"Saved vasculature image -> {vasculature_output_fp}")
+    metric = QCMetric(
+        name="Vasculature_image",
+        description="Vasculature image to assess brain health and window clarity",
+        status_history=[PendingStatus()],
+        reference=str(vasculature_output_fp),
+        value=None
+    )
+    evaluation = QCEvaluation(
+        name="Window Health and Brain Clarity",
+        description="QC evaluation of vasculature image",
+        metrics=[metric],
+        modality=Modality.POPHYS,
+        stage=Stage.RAW,
+    )
+    eval_out_path = vasculature_output_dir / "vasculature_evaluation.json"
+    with open(eval_out_path, "w") as f:
+        json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
+    logging.info(f"Saved evaluation JSON -> {eval_out_path}")
 
 
 def run():
@@ -320,7 +349,7 @@ def run():
         bergamo_stitcher = BergamoTiffStitcher(bergamo_settings)
         bergamo_stitcher.run_converter()
     elif "multiplane" in data_description["name"]:
-        # --- normal multiplane splitting ---
+        # # --- normal multiplane splitting ---
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
         if len(split_directories) == 0:
@@ -353,6 +382,7 @@ def run():
                 output_dir,
                 Path("/results/matched_tiff_vals"),
             )
+            create_vasculature(pophys_dir, output_dir)
 
 
 if __name__ == "__main__":

@@ -262,7 +262,8 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
             exp_ids.append(m.group(1))
 
     if not exp_ids:
-        raise FileNotFoundError(f"No '*_depth.tif' files found in {pophys_dir}")
+        logging.info("No depth tiffs, likely a parent session")
+        return None
 
     return sorted(exp_ids, key=int)
 
@@ -363,16 +364,18 @@ def run():
             )
 
             exp_ids = get_exp_ids_from_pophys(pophys_dir)
-            splitter = AvgImageTiffSplitter(avg_depth_path)
-            write_avg_depth_slices(splitter, output_dir)
-            pair_exp_ids_with_avg_depth_pngs(
-                exp_ids,
-                session_fp,
-                pophys_dir,
-                output_dir,
-                Path("/results/matched_tiff_vals"),
-            )
-            create_vasculature(pophys_dir, output_dir)
+            if exp_ids is not None:
+
+                splitter = AvgImageTiffSplitter(avg_depth_path)
+                write_avg_depth_slices(splitter, output_dir)
+                pair_exp_ids_with_avg_depth_pngs(
+                    exp_ids,
+                    session_fp,
+                    pophys_dir,
+                    output_dir,
+                    Path("/results/matched_tiff_vals"),
+                )
+                create_vasculature(pophys_dir, output_dir)
 
 
 if __name__ == "__main__":

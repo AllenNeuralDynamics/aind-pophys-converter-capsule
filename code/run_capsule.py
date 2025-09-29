@@ -375,7 +375,7 @@ def run():
                     output_dir,
                     Path("/results/matched_tiff_vals"),
                 )
-                create_vasculature(pophys_dir, output_dir)
+        create_vasculature(pophys_dir, output_dir)
 
 
 if __name__ == "__main__":

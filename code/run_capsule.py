@@ -287,7 +287,7 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
     if not vasculature_fp:
         logging.info("No averaged depth TIFF files found for vasculature creation.")
         return
-    vasculature_output_dir = output_dir / "valsulature"
+    vasculature_output_dir = output_dir / "vasculature"
     vasculature_output_dir.mkdir()
     vasculature_output_fp = vasculature_output_dir /  "vasculature.png"
     with Image.open(vasculature_fp) as im:

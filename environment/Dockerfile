@@ -17,5 +17,9 @@ RUN --mount=type=secret,id=git-access-token \
     aind-data-schema==1.4.0 \
     aind-data-schema-models==0.7.5 \
     pydantic-settings==2.8.1 \
-    tifffile==2024.2.12 \
-    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter@84f6a09cd1f37eff79109f9bb07a553150404db2#egg=aind-pophys-converter
+    tifffile==2024.2.12
+#    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter@84f6a09cd1f37eff79109f9bb07a553150404db2#egg=aind-pophys-converter
+
+COPY postInstall /
+RUN --mount=type=secret,id=secrets . /run/secrets/secrets \
+    && /postInstall

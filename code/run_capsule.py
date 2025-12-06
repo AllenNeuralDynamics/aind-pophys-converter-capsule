@@ -13,6 +13,7 @@ import pytz
 from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
                                                    QCMetric, QCStatus, Stage,
                                                    Status)
+from aind_qcportal_schema.metric_value import DropdownMetric
 from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
                                                     BergamoTiffStitcher)
 from aind_pophys_converter.mesoscope_splitter import (AvgImageTiffSplitter,
@@ -149,10 +150,11 @@ def pair_exp_ids_with_avg_depth_pngs(
             continue
 
         fov = fovs[i]
-        fov_z = abs(fov["scanfield_z"])  # absolute value for matching
+        scanfield_z = abs(fov["scanfield_z"]) # value for matching to png
+        fov_z = abs(fov["imaging_depth"]) # actual imaging depth 
 
         # Find closest PNG slice
-        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - fov_z))
+        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - scanfield_z))
         png_path = z_to_png[closest_z]
 
         # Load raw plane TIFF for this exp_id
@@ -186,27 +188,37 @@ def pair_exp_ids_with_avg_depth_pngs(
         except Exception as e:
             print(f"Failed to delete {png_path}: {e}")
 
+        unique_id = f"{fov.get('targeted_structure')}_{fov.get('index')}"
+
         # --- Add QC Metric ---
         metric = QCMetric(
-            name=f"ExpID {exp_id} merged view",
+            name=f"{unique_id} Parent-Child FOV ",
             description=(
-                f"ExpID {exp_id} (FOV {fov.get('targeted_structure')}, "
-                f"depth {fov_z}) paired with averaged PNG at depth {closest_z}"
+                f"{unique_id}, with actual imaging-depth: {fov_z} "
+                f"paired with averaged PNG at scanfield_z: {closest_z}"
             ),
             status_history=[PendingStatus()],
             reference=str(merged_path),
-            value=str(closest_z),
+            value=DropdownMetric(
+                value="",
+                options=[
+                    "FOV Matches parent FOV",
+                    "FOV does not match parent FOV.",
+                ],
+                status=[Status.PASS, Status.FAIL],
+            )
         )
         metrics.append(metric)
 
     if metrics:
         evaluation = QCEvaluation(
-            name="Merged Raw vs Averaged Depth PNGs",
+            name="Op. QC: Field-of-view Matching",
             description="QC evaluation of merged raw TIFFs and "
             "closest averaged depth PNG slices",
             metrics=metrics,
             modality=Modality.POPHYS,
             stage=Stage.RAW,
+            tags=["Operational QC"]
         )
         eval_out_path = output_dir / "merged_planes_evaluation.json"
         with open(eval_out_path, "w") as f:
@@ -299,14 +311,29 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
         description="Vasculature image to assess brain health and window clarity",
         status_history=[PendingStatus()],
         reference=str(vasculature_output_fp),
-        value=None
+        value=DropdownMetric(
+            value="",
+            options=[
+                "Quality is sufficient",
+                "Poor vasculature image quality",
+                "Light bruising on surface of brain",
+                "Severe bruising on surface of brain",
+                "Vascularization of brain surface",
+                "Discoloration of brain surface (white)",
+                "Bubbles in objective immersion present, but do NOT impact imaging quality",
+                "Bubbles in objective immersion impact imaging quality"
+            ],
+            status=[Status.PASS, Status.PASS, Status.PASS, Status.FAIL, Status.PASS, Status.PASS, Status.PASS, Status.FAIL],
+        )
     )
+    
     evaluation = QCEvaluation(
-        name="Window Health and Brain Clarity",
+        name="Op. QC: Window Clarity",
         description="QC evaluation of vasculature image",
         metrics=[metric],
         modality=Modality.POPHYS,
         stage=Stage.RAW,
+        tags=["Operational QC"]
     )
     eval_out_path = vasculature_output_dir / "vasculature_evaluation.json"
     with open(eval_out_path, "w") as f:

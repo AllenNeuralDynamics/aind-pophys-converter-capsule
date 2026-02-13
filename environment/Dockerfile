@@ -14,8 +14,8 @@ RUN apt-get update \
 RUN --mount=type=secret,id=git-access-token \
     GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
     pip install -U --no-cache-dir \
-    aind-data-schema==1.4.0 \
-    aind-data-schema-models==0.7.5 \
+    aind-data-schema==2.4.0 \
+    aind-data-schema-models==5.3.0 \
     aind_qcportal_schema \
     pydantic-settings==2.8.1 \
     tifffile==2024.2.12

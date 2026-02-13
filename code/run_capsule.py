@@ -10,9 +10,10 @@ from typing import List
 
 import numpy as np
 import pytz
-from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
-                                                   QCMetric, QCStatus, Stage,
+from aind_data_schema.core.quality_control import (QCMetric, QCStatus,
+                                                   QualityControl, Stage,
                                                    Status)
+from aind_data_schema_models.modalities import Modality
 from aind_qcportal_schema.metric_value import DropdownMetric
 from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
                                                     BergamoTiffStitcher)
@@ -197,6 +198,13 @@ def pair_exp_ids_with_avg_depth_pngs(
                 f"{unique_id}, with actual imaging-depth: {fov_z} "
                 f"paired with averaged PNG at scanfield_z: {closest_z}"
             ),
+            modality=Modality.POPHYS,
+            stage=Stage.RAW,
+            tags={
+                "evaluation": "Parent-Child FOV Matching",
+                "operational_qc": "true",
+                "pophys_id": exp_id,
+            },
             status_history=[PendingStatus()],
             reference=str(merged_path),
             value=DropdownMetric(
@@ -211,18 +219,15 @@ def pair_exp_ids_with_avg_depth_pngs(
         metrics.append(metric)
 
     if metrics:
-        evaluation = QCEvaluation(
-            name="Op. QC: Field-of-view Matching",
-            description="QC evaluation of merged raw TIFFs and "
-            "closest averaged depth PNG slices",
+        qc = QualityControl(
             metrics=metrics,
-            modality=Modality.POPHYS,
-            stage=Stage.RAW,
-            tags=["Operational QC"]
+            notes="QC evaluation of merged raw TIFFs and "
+            "closest averaged depth PNG slices",
+            default_grouping=["evaluation", "operational_qc", "pophys_id"],
         )
         eval_out_path = output_dir / "merged_planes_evaluation.json"
         with open(eval_out_path, "w") as f:
-            json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
+            json.dump(json.loads(qc.model_dump_json()), f, indent=4)
         print(f"Saved evaluation JSON -> {eval_out_path}")
 
 
@@ -309,6 +314,13 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
     metric = QCMetric(
         name="Vasculature_image",
         description="Vasculature image to assess brain health and window clarity",
+        modality=Modality.POPHYS,
+        stage=Stage.RAW,
+        tags={
+            "evaluation": "Vasculature Image",
+            "operational_qc": "true",
+            "pophys_id": "vasculature",
+        },
         status_history=[PendingStatus()],
         reference=str(vasculature_output_fp),
         value=DropdownMetric(
@@ -326,18 +338,15 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
             status=[Status.PASS, Status.PASS, Status.PASS, Status.FAIL, Status.PASS, Status.PASS, Status.PASS, Status.FAIL],
         )
     )
-    
-    evaluation = QCEvaluation(
-        name="Op. QC: Window Clarity",
-        description="QC evaluation of vasculature image",
+
+    qc = QualityControl(
         metrics=[metric],
-        modality=Modality.POPHYS,
-        stage=Stage.RAW,
-        tags=["Operational QC"]
+        notes="QC evaluation of vasculature image",
+        default_grouping=["operational_qc", "pophys_id"],
     )
     eval_out_path = vasculature_output_dir / "vasculature_evaluation.json"
     with open(eval_out_path, "w") as f:
-        json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
+        json.dump(json.loads(qc.model_dump_json()), f, indent=4)
     logging.info(f"Saved evaluation JSON -> {eval_out_path}")
 
 

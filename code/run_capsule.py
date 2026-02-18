@@ -307,6 +307,9 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
     <exp_id>_depth.tif in a pophys directory.
     Returns a sorted list of IDs as strings.
 
+    Supports both numeric IDs (old format: 1454221950_depth.tif)
+    and timestamp/string IDs (new format: VISp_0_depth.tif or similar).
+
     Parameters
     ----------
     pophys_dir : Path
@@ -317,19 +320,38 @@ def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
     List[str]
         Sorted list of experiment IDs as strings.
     """
-    tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
+    # Match: anything before "_depth.tif" (numeric or alphanumeric with underscores/hyphens)
+    tif_pattern = re.compile(r"(.+)_depth\.tif$", re.IGNORECASE)
     exp_ids = []
 
-    for p in pophys_dir.glob("*_depth.tif"):
+    logger.debug(f"[GET_EXP_IDS] Searching for *_depth.tif files in {pophys_dir}")
+    depth_files = list(pophys_dir.glob("*_depth.tif"))
+    logger.debug(f"[GET_EXP_IDS] Found {len(depth_files)} depth files")
+
+    for p in depth_files:
+        logger.debug(f"[GET_EXP_IDS] Processing file: {p.name}")
         m = tif_pattern.search(p.name)
         if m:
-            exp_ids.append(m.group(1))
+            exp_id = m.group(1)
+            logger.debug(f"[GET_EXP_IDS] Extracted exp_id: {exp_id}")
+            exp_ids.append(exp_id)
+        else:
+            logger.warning(f"[GET_EXP_IDS] Failed to parse exp_id from {p.name}")
 
     if not exp_ids:
-        logging.info("No depth tiffs, likely a parent session")
+        logger.info("[GET_EXP_IDS] No depth tiffs found, likely a parent session")
         return None
 
-    return sorted(exp_ids, key=int)
+    # Try to sort numerically if possible; otherwise sort lexicographically
+    try:
+        sorted_ids = sorted(exp_ids, key=int)
+        logger.debug(f"[GET_EXP_IDS] Sorted numerically: {sorted_ids}")
+    except ValueError:
+        # If numeric sorting fails, sort lexicographically
+        sorted_ids = sorted(exp_ids)
+        logger.debug(f"[GET_EXP_IDS] Sorted lexicographically (numeric sort failed): {sorted_ids}")
+
+    return sorted_ids
 
 
 def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:

@@ -18,6 +18,7 @@ RUN --mount=type=secret,id=git-access-token \
     aind-data-schema-models==0.7.5 \
     aind_qcportal_schema \
     pydantic-settings==2.8.1 \
+    pytz \
     tifffile==2024.2.12
 #    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter@84f6a09cd1f37eff79109f9bb07a553150404db2#egg=aind-pophys-converter
 

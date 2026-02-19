@@ -2,11 +2,10 @@
 
 import json
 import logging
-import re
 import tempfile
 from datetime import datetime as dt
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pytz
@@ -98,25 +97,25 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
 
 
 def pair_exp_ids_with_avg_depth_pngs(
-    exp_ids: List[str],
+    unique_ids: List[str],
     session_json_path: Path,
-    pophys_dir: Path,
+    results_dir: Path,
     avg_png_dir: Path,
     output_dir: Path,
 ) -> None:
     """
-    For each experiment ID, find the closest matching averaged-depth PNG
+    For each unique ID, find the closest matching averaged-depth PNG
     based on z-value, merge side-by-side with borders and labels, and
     save the result. Also create a QC evaluation JSON.
 
     Parameters
     ----------
-    exp_ids : List[str]
-        List of experiment IDs to process.
+    unique_ids : List[str]
+        List of unique IDs to process (e.g. "Visp_0").
     session_json_path : Path
         Path to the session.json file containing FOV info.
-    pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
+    results_dir : Path
+        Results directory containing <unique_id>/<unique_id>_depth.tif files.
     avg_png_dir : Path
         Directory containing averaged-depth PNG files named by z-value.
     output_dir : Path
@@ -138,18 +137,24 @@ def pair_exp_ids_with_avg_depth_pngs(
     if not fovs:
         raise ValueError("No ophys_fovs found in session.json")
 
+    # --- Build a lookup from unique_id to FOV ---
+    fov_lookup = {}
+    for fov in fovs:
+        fov_uid = f"{fov.get('targeted_structure')}_{fov.get('index')}"
+        fov_lookup[fov_uid] = fov
+
     # --- Collect z-values of PNG slices ---
     png_paths = list(avg_png_dir.glob("*.png"))
     z_to_png = {abs(float(p.stem)): p for p in png_paths}
 
     metrics = []
 
-    for i, exp_id in enumerate(sorted(exp_ids, key=int)):
-        if i >= len(fovs):
-            print(f"Skipping exp_id {exp_id}: no matching FOV")
+    for unique_id in sorted(unique_ids):
+        fov = fov_lookup.get(unique_id)
+        if fov is None:
+            print(f"Skipping unique_id {unique_id}: no matching FOV")
             continue
 
-        fov = fovs[i]
         scanfield_z = abs(fov["scanfield_z"]) # value for matching to png
         fov_z = abs(fov["imaging_depth"]) # actual imaging depth 
 
@@ -157,10 +162,11 @@ def pair_exp_ids_with_avg_depth_pngs(
         closest_z = min(z_to_png.keys(), key=lambda z: abs(z - scanfield_z))
         png_path = z_to_png[closest_z]
 
-        # Load raw plane TIFF for this exp_id
-        raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
+        # Load raw plane TIFF from results directory
+        raw_tif_path = results_dir / unique_id / f"{unique_id}_depth.tif"
         if not raw_tif_path.exists():
-            print(f"Skipping exp_id {exp_id}: " f"raw TIFF not found at {raw_tif_path}")
+            print(f"Skipping unique_id {unique_id}: "
+                  f"raw TIFF not found at {raw_tif_path}")
             continue
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
@@ -177,9 +183,9 @@ def pair_exp_ids_with_avg_depth_pngs(
         merged.paste(avg_img, (raw_img.width, 0))
 
         # Save merged PNG
-        merged_path = output_dir / f"{exp_id}_merged.png"
+        merged_path = output_dir / f"{unique_id}_merged.png"
         merged.save(merged_path)
-        print(f"Saved merged image for exp_id {exp_id} -> {merged_path}")
+        print(f"Saved merged image for unique_id {unique_id} -> {merged_path}")
 
         # --- Delete the original averaged PNG ---
         try:
@@ -187,8 +193,6 @@ def pair_exp_ids_with_avg_depth_pngs(
             print(f"Deleted original averaged PNG -> {png_path}")
         except Exception as e:
             print(f"Failed to delete {png_path}: {e}")
-
-        unique_id = f"{fov.get('targeted_structure')}_{fov.get('index')}"
 
         # --- Add QC Metric ---
         metric = QCMetric(
@@ -249,35 +253,33 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         print(f"Saved PNG: {png_path}")
 
 
-def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
+def get_unique_ids_from_results(results_dir: Path) -> Optional[List[str]]:
     """
-    Grab all experiment IDs from files like
-    <exp_id>_depth.tif in a pophys directory.
-    Returns a sorted list of IDs as strings.
+    Grab all unique IDs from files like
+    <unique_id>/<unique_id>_depth.tif in a results directory.
+    Returns a sorted list of unique IDs as strings.
 
     Parameters
     ----------
-    pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
+    results_dir : Path
+        Results directory containing subdirectories with depth TIFF files.
 
     Returns
     -------
     List[str]
-        Sorted list of experiment IDs as strings.
+        Sorted list of unique IDs as strings, or None if no depth tiffs found.
     """
-    tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
-    exp_ids = []
+    unique_ids = []
 
-    for p in pophys_dir.glob("*_depth.tif"):
-        m = tif_pattern.search(p.name)
-        if m:
-            exp_ids.append(m.group(1))
+    for p in results_dir.glob("*/*_depth.tif"):
+        unique_id = p.parent.name
+        unique_ids.append(unique_id)
 
-    if not exp_ids:
-        logging.info("No depth tiffs, likely a parent session")
+    if not unique_ids:
+        logging.info("No depth tiffs in results, likely a parent session")
         return None
 
-    return sorted(exp_ids, key=int)
+    return sorted(unique_ids)
 
 
 def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
@@ -390,15 +392,15 @@ def run():
                 {avg_depth_path} -> {output_dir}"
             )
 
-            exp_ids = get_exp_ids_from_pophys(pophys_dir)
-            if exp_ids is not None:
+            unique_ids = get_unique_ids_from_results(output_dir)
+            if unique_ids is not None:
 
                 splitter = AvgImageTiffSplitter(avg_depth_path)
                 write_avg_depth_slices(splitter, output_dir)
                 pair_exp_ids_with_avg_depth_pngs(
-                    exp_ids,
+                    unique_ids,
                     session_fp,
-                    pophys_dir,
+                    output_dir,
                     output_dir,
                     Path("/results/matched_tiff_vals"),
                 )

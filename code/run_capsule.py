@@ -145,7 +145,7 @@ def pair_exp_ids_with_avg_depth_pngs(
         # --- Find closest PNG by magnitude ---
         closest_z = min(
             z_to_png.keys(),
-            key=lambda z: abs(abs(z) - scanfield_z)
+            key=lambda z: abs(abs(z) - fov_z)
         )
         png_path = z_to_png[closest_z]
 

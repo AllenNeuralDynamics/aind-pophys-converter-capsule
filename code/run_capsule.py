@@ -106,25 +106,8 @@ def pair_exp_ids_with_avg_depth_pngs(
 ) -> None:
     """
     For each experiment ID, find the closest matching averaged-depth PNG
-    based on z-value, merge side-by-side with borders and labels, and
-    save the result. Also create a QC evaluation JSON.
-
-    Parameters
-    ----------
-    exp_ids : List[str]
-        List of experiment IDs to process.
-    session_json_path : Path
-        Path to the session.json file containing FOV info.
-    pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
-    avg_png_dir : Path
-        Directory containing averaged-depth PNG files named by z-value.
-    output_dir : Path
-        Directory to save merged PNGs and QC evaluation JSON.
-
-    Returns
-    -------
-    None
+    based on z-value magnitude, merge side-by-side with borders and labels,
+    and save the result. Also create a QC evaluation JSON.
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
@@ -135,64 +118,75 @@ def pair_exp_ids_with_avg_depth_pngs(
     fovs = []
     for ds in sj.get("data_streams", []):
         fovs.extend(ds.get("ophys_fovs", []))
+
     if not fovs:
         raise ValueError("No ophys_fovs found in session.json")
 
-    # --- Collect z-values of PNG slices ---
+    # --- Collect averaged PNG slices (KEEP SIGNED z) ---
     png_paths = list(avg_png_dir.glob("*.png"))
-    z_to_png = {abs(float(p.stem)): p for p in png_paths}
+    if not png_paths:
+        raise ValueError(f"No averaged PNGs found in {avg_png_dir}")
+
+    z_to_png = {float(p.stem): p for p in png_paths}
 
     metrics = []
+    used_pngs: set[Path] = set()
 
+    # --- Pair exp_ids with FOVs ---
     for i, exp_id in enumerate(sorted(exp_ids, key=int)):
         if i >= len(fovs):
             print(f"Skipping exp_id {exp_id}: no matching FOV")
             continue
 
         fov = fovs[i]
-        scanfield_z = abs(fov["scanfield_z"]) # value for matching to png
-        fov_z = abs(fov["imaging_depth"]) # actual imaging depth 
+        scanfield_z = abs(fov["scanfield_z"])   # for matching
+        fov_z = abs(fov["imaging_depth"])       # actual depth (reporting)
 
-        # Find closest PNG slice
-        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - scanfield_z))
+        # --- Find closest PNG by magnitude ---
+        closest_z = min(
+            z_to_png.keys(),
+            key=lambda z: abs(abs(z) - fov_z)
+        )
         png_path = z_to_png[closest_z]
 
-        # Load raw plane TIFF for this exp_id
+        if not png_path.exists():
+            raise FileNotFoundError(f"Expected averaged PNG missing: {png_path}")
+
+        # --- Load raw plane TIFF ---
         raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
         if not raw_tif_path.exists():
-            print(f"Skipping exp_id {exp_id}: " f"raw TIFF not found at {raw_tif_path}")
+            print(
+                f"Skipping exp_id {exp_id}: raw TIFF not found at {raw_tif_path}"
+            )
             continue
+
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
 
-        # Add borders + bottom-center labels
+        # --- Add borders + labels ---
         raw_img = add_border_and_label(raw_img, "Child")
         avg_img = add_border_and_label(avg_img, "Parent")
 
-        # Merge side-by-side
+        # --- Merge side-by-side ---
         total_width = raw_img.width + avg_img.width
         max_height = max(raw_img.height, avg_img.height)
+
         merged = Image.new("RGB", (total_width, max_height), color="black")
         merged.paste(raw_img, (0, 0))
         merged.paste(avg_img, (raw_img.width, 0))
 
-        # Save merged PNG
+        # --- Save merged image ---
         merged_path = output_dir / f"{exp_id}_merged.png"
         merged.save(merged_path)
         print(f"Saved merged image for exp_id {exp_id} -> {merged_path}")
 
-        # --- Delete the original averaged PNG ---
-        try:
-            png_path.unlink()
-            print(f"Deleted original averaged PNG -> {png_path}")
-        except Exception as e:
-            print(f"Failed to delete {png_path}: {e}")
+        used_pngs.add(png_path)
 
         unique_id = f"{fov.get('targeted_structure')}_{fov.get('index')}"
 
         # --- Add QC Metric ---
         metric = QCMetric(
-            name=f"{unique_id} Parent-Child FOV ",
+            name=f"{unique_id} Parent-Child FOV",
             description=(
                 f"{unique_id}, with actual imaging-depth: {fov_z} "
                 f"paired with averaged PNG at scanfield_z: {closest_z}"
@@ -206,24 +200,47 @@ def pair_exp_ids_with_avg_depth_pngs(
                     "FOV does not match parent FOV.",
                 ],
                 status=[Status.PASS, Status.FAIL],
-            )
+            ),
         )
         metrics.append(metric)
 
+    # --- Delete averaged PNGs AFTER all pairings ---
+    for png_path in used_pngs:
+        try:
+            png_path.unlink()
+            print(f"Deleted original averaged PNG -> {png_path}")
+        except Exception as e:
+            print(f"Failed to delete {png_path}: {e}")
+    unused_pngs = set(png_paths) - used_pngs
+
+    for png_path in unused_pngs:
+        print(f"Deleting unused averaged PNG -> {png_path}")
+        png_path.unlink()
+
+    # --- Write QC evaluation JSON ---
     if metrics:
         evaluation = QCEvaluation(
             name="Op. QC: Field-of-view Matching",
-            description="QC evaluation of merged raw TIFFs and "
-            "closest averaged depth PNG slices",
+            description=(
+                "QC evaluation of merged raw TIFFs and "
+                "closest averaged depth PNG slices"
+            ),
             metrics=metrics,
             modality=Modality.POPHYS,
             stage=Stage.RAW,
-            tags=["Operational QC"]
+            tags=["Operational QC"],
         )
+
         eval_out_path = output_dir / "merged_planes_evaluation.json"
         with open(eval_out_path, "w") as f:
-            json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
+            json.dump(
+                json.loads(evaluation.model_dump_json()),
+                f,
+                indent=4,
+            )
+
         print(f"Saved evaluation JSON -> {eval_out_path}")
+
 
 
 def write_avg_depth_slices(splitter, output_dir: Path):

@@ -6,7 +6,6 @@ import re
 import tempfile
 from datetime import datetime as dt
 from pathlib import Path
-from typing import List
 
 import numpy as np
 import pytz
@@ -97,26 +96,21 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
     return bordered
 
 
-def pair_exp_ids_with_avg_depth_pngs(
-    exp_ids: List[str],
-    session_json_path: Path,
+def pair_depth_tifs_with_avg_depth_pngs(
     pophys_dir: Path,
     avg_png_dir: Path,
     output_dir: Path,
 ) -> None:
     """
-    For each experiment ID, find the closest matching averaged-depth PNG
-    based on z-value, merge side-by-side with borders and labels, and
-    save the result. Also create a QC evaluation JSON.
+    For each depth TIFF (named <id>_<scanfield_z>_depth.tif), find the closest
+    matching averaged-depth PNG based on the z-value encoded in the filename,
+    merge side-by-side with borders and labels, and save the result.
+    Also creates a QC evaluation JSON.
 
     Parameters
     ----------
-    exp_ids : List[str]
-        List of experiment IDs to process.
-    session_json_path : Path
-        Path to the session.json file containing FOV info.
     pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
+        Directory containing raw TIFF files named <id>_<scanfield_z>_depth.tif.
     avg_png_dir : Path
         Directory containing averaged-depth PNG files named by z-value.
     output_dir : Path
@@ -128,40 +122,30 @@ def pair_exp_ids_with_avg_depth_pngs(
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    # --- Load session JSON and FOVs ---
-    with open(session_json_path, "r") as f:
-        sj = json.load(f)
-
-    fovs = []
-    for ds in sj.get("data_streams", []):
-        fovs.extend(ds.get("ophys_fovs", []))
-    if not fovs:
-        raise ValueError("No ophys_fovs found in session.json")
-
     # --- Collect z-values of PNG slices ---
     png_paths = list(avg_png_dir.glob("*.png"))
     z_to_png = {abs(float(p.stem)): p for p in png_paths}
 
+    # --- Find all depth TIFFs and parse scanfield_z from filename ---
+    tif_pattern = re.compile(r"^(.+)_(-?\d+)_depth\.tif$", re.IGNORECASE)
+    depth_tifs = []
+    for p in pophys_dir.glob("*_depth.tif"):
+        m = tif_pattern.match(p.name)
+        if m:
+            scanfield_z = int(m.group(2))
+            depth_tifs.append((p, scanfield_z))
+
+    if not depth_tifs:
+        print("No depth TIFFs matching <id>_<z>_depth.tif found.")
+        return
+
     metrics = []
 
-    for i, exp_id in enumerate(sorted(exp_ids, key=int)):
-        if i >= len(fovs):
-            print(f"Skipping exp_id {exp_id}: no matching FOV")
-            continue
-
-        fov = fovs[i]
-        scanfield_z = abs(fov["scanfield_z"]) # value for matching to png
-        fov_z = abs(fov["imaging_depth"]) # actual imaging depth 
-
+    for raw_tif_path, scanfield_z in sorted(depth_tifs, key=lambda x: x[1]):
         # Find closest PNG slice
-        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - scanfield_z))
+        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - abs(scanfield_z)))
         png_path = z_to_png[closest_z]
 
-        # Load raw plane TIFF for this exp_id
-        raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
-        if not raw_tif_path.exists():
-            print(f"Skipping exp_id {exp_id}: " f"raw TIFF not found at {raw_tif_path}")
-            continue
         raw_img = Image.open(raw_tif_path)
         avg_img = Image.open(png_path)
 
@@ -177,9 +161,9 @@ def pair_exp_ids_with_avg_depth_pngs(
         merged.paste(avg_img, (raw_img.width, 0))
 
         # Save merged PNG
-        merged_path = output_dir / f"{exp_id}_merged.png"
+        merged_path = output_dir / f"{raw_tif_path.stem}_merged.png"
         merged.save(merged_path)
-        print(f"Saved merged image for exp_id {exp_id} -> {merged_path}")
+        print(f"Saved merged image for {raw_tif_path.name} -> {merged_path}")
 
         # --- Delete the original averaged PNG ---
         try:
@@ -188,14 +172,14 @@ def pair_exp_ids_with_avg_depth_pngs(
         except Exception as e:
             print(f"Failed to delete {png_path}: {e}")
 
-        unique_id = f"{fov.get('targeted_structure')}_{fov.get('index')}"
+        unique_id = f"z{scanfield_z}"
 
         # --- Add QC Metric ---
         metric = QCMetric(
-            name=f"{unique_id} Parent-Child FOV ",
+            name=f"{unique_id} Parent-Child FOV",
             description=(
-                f"{unique_id}, with actual imaging-depth: {fov_z} "
-                f"paired with averaged PNG at scanfield_z: {closest_z}"
+                f"{raw_tif_path.stem} at scanfield_z: {scanfield_z} "
+                f"paired with averaged PNG at z: {closest_z}"
             ),
             status_history=[PendingStatus()],
             reference=str(merged_path),
@@ -248,36 +232,6 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         Image.fromarray(img_scaled).save(png_path)
         print(f"Saved PNG: {png_path}")
 
-
-def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
-    """
-    Grab all experiment IDs from files like
-    <exp_id>_depth.tif in a pophys directory.
-    Returns a sorted list of IDs as strings.
-
-    Parameters
-    ----------
-    pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
-
-    Returns
-    -------
-    List[str]
-        Sorted list of experiment IDs as strings.
-    """
-    tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
-    exp_ids = []
-
-    for p in pophys_dir.glob("*_depth.tif"):
-        m = tif_pattern.search(p.name)
-        if m:
-            exp_ids.append(m.group(1))
-
-    if not exp_ids:
-        logging.info("No depth tiffs, likely a parent session")
-        return None
-
-    return sorted(exp_ids, key=int)
 
 
 def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
@@ -340,7 +294,12 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
         json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
     logging.info(f"Saved evaluation JSON -> {eval_out_path}")
 
+def is_child_session_via_platform_json(platform_fp: Path) -> bool:
+    with open(platform_fp) as f:
+        platform_json = json.load(f)
+        parent_session = platform_json.get("parent_session", None)
 
+    return parent_session is not None
 def run():
     """basic run function"""
     job_settings = JobSettings()
@@ -348,6 +307,8 @@ def run():
     output_dir = Path(job_settings.output_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
+
+    platform_fp = next(input_dir.rglob("platform.json"), None)
 
     with open(session_fp) as f:
         session = json.load(f)
@@ -390,14 +351,11 @@ def run():
                 {avg_depth_path} -> {output_dir}"
             )
 
-            exp_ids = get_exp_ids_from_pophys(pophys_dir)
-            if exp_ids is not None:
+            if platform_fp and is_child_session_via_platform_json(platform_fp):
 
                 splitter = AvgImageTiffSplitter(avg_depth_path)
                 write_avg_depth_slices(splitter, output_dir)
-                pair_exp_ids_with_avg_depth_pngs(
-                    exp_ids,
-                    session_fp,
+                pair_depth_tifs_with_avg_depth_pngs(
                     pophys_dir,
                     output_dir,
                     Path("/results/matched_tiff_vals"),

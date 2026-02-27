@@ -98,29 +98,32 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
 
 def pair_depth_tifs_with_avg_depth_pngs(
     pophys_dir: Path,
-    avg_png_dir: Path,
+    avg_slice_dir: Path,
     platform_fp: Path,
     output_dir: Path,
 ) -> None:
     """
     For each imaging plane defined in platform.json, locate the parent depth
     TIFF by intended_depth and targeted_structure_id, find the closest child
-    averaged-depth PNG by abs(scanimage_scanfield_z), merge them side-by-side
+    averaged-depth TIF by abs(scanimage_scanfield_z), merge them side-by-side
     with borders and labels, and save the result. Also creates a QC evaluation
     JSON.
 
+    Both images are normalized to uint8 using the parent's 5th/95th percentiles
+    as shared intensity bounds, so they are displayed on the same contrast scale.
+
     Parent TIFs are named <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif
-    and come from the parent session. Child PNGs are written by write_avg_depth_slices
-    from the current (child) session's averaged depth TIFF and are named by z-value.
+    and come from the parent session. Child TIFs are written by write_avg_depth_slices
+    as float32 from the current (child) session's averaged depth TIFF.
 
     Parameters
     ----------
     pophys_dir : Path
         Directory containing parent depth TIFFs named
         <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif.
-    avg_png_dir : Path
-        Directory containing child averaged-depth PNG files named by z-value
-        (e.g. -276.0.png), written by write_avg_depth_slices.
+    avg_slice_dir : Path
+        Directory containing child averaged-depth float32 TIF files named by
+        z-value (e.g. -276.0.tif), written by write_avg_depth_slices.
     platform_fp : Path
         Path to the session platform.json, which provides intended_depth,
         targeted_structure_id, and scanimage_scanfield_z for each imaging plane.
@@ -147,12 +150,12 @@ def pair_depth_tifs_with_avg_depth_pngs(
         print("No imaging planes found in platform.json; skipping depth pairing.")
         return
 
-    # --- Collect child PNGs keyed by abs z-value ---
-    png_paths = list(avg_png_dir.glob("*.png"))
-    z_to_png = {abs(float(p.stem)): p for p in png_paths}
+    # --- Collect child TIFs keyed by abs z-value ---
+    child_tifs = list(avg_slice_dir.glob("*.tif"))
+    z_to_tif = {abs(float(p.stem)): p for p in child_tifs}
 
-    if not z_to_png:
-        print("No averaged-depth PNGs found; skipping depth pairing.")
+    if not z_to_tif:
+        print("No averaged-depth TIFs found; skipping depth pairing.")
         return
 
     metrics = []
@@ -180,25 +183,29 @@ def pair_depth_tifs_with_avg_depth_pngs(
             )
         raw_tif_path = parent_tifs[0]
 
-        # --- Find closest child PNG by abs(scanimage_scanfield_z) ---
-        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - abs(scanfield_z)))
-        png_path = z_to_png[closest_z]
+        # --- Find closest child TIF by abs(scanimage_scanfield_z) ---
+        closest_z = min(z_to_tif.keys(), key=lambda z: abs(z - abs(scanfield_z)))
+        child_tif_path = z_to_tif[closest_z]
 
-        # Read parent TIF using tifffile (PIL cannot read float64 TIFFs)
+        # Read both as float64 arrays
         with tifffile.TiffFile(raw_tif_path) as tif:
-            tif_array = tif.asarray().astype(np.float64)
+            parent_array = tif.asarray().astype(np.float64)
+        with tifffile.TiffFile(child_tif_path) as tif:
+            child_array = tif.asarray().astype(np.float64)
 
-        # Normalize parent using its 5th/95th percentiles
-        p_low = np.percentile(tif_array, 5)
-        p_high = np.percentile(tif_array, 95)
+        # Normalize both using parent 5th/95th percentiles as shared bounds
+        p_low = np.percentile(parent_array, 5)
+        p_high = np.percentile(parent_array, 95)
         if p_high > p_low:
-            tif_scaled = (tif_array - p_low) / (p_high - p_low) * 255
+            raw_img = Image.fromarray(
+                np.clip((parent_array - p_low) / (p_high - p_low) * 255, 0, 255).astype(np.uint8)
+            )
+            avg_img = Image.fromarray(
+                np.clip((child_array - p_low) / (p_high - p_low) * 255, 0, 255).astype(np.uint8)
+            )
         else:
-            tif_scaled = np.zeros_like(tif_array)
-        raw_img = Image.fromarray(np.clip(tif_scaled, 0, 255).astype(np.uint8))
-
-        # Child PNG is already uint8 (0-255) from write_avg_depth_slices; use as-is
-        avg_img = Image.open(png_path)
+            raw_img = Image.fromarray(np.zeros_like(parent_array, dtype=np.uint8))
+            avg_img = Image.fromarray(np.zeros_like(child_array, dtype=np.uint8))
 
         # Add borders + bottom-center labels
         raw_img = add_border_and_label(raw_img, "Parent")
@@ -216,12 +223,12 @@ def pair_depth_tifs_with_avg_depth_pngs(
         merged.save(merged_path)
         print(f"Saved merged image for {raw_tif_path.name} -> {merged_path}")
 
-        # --- Delete the original averaged PNG ---
+        # --- Delete the original averaged TIF ---
         try:
-            png_path.unlink()
-            print(f"Deleted original averaged PNG -> {png_path}")
+            child_tif_path.unlink()
+            print(f"Deleted original averaged TIF -> {child_tif_path}")
         except Exception as e:
-            print(f"Failed to delete {png_path}: {e}")
+            print(f"Failed to delete {child_tif_path}: {e}")
 
         unique_id = f"{targeted_structure_id}_{intended_depth}um"
 
@@ -267,22 +274,16 @@ def write_avg_depth_slices(splitter, output_dir: Path):
 
     for roi_idx, z_int in splitter.roi_z_int_manifest:
         z_value = splitter._z_from_int(z_int)
-        png_path = output_dir / f"{z_value:.1f}.png"
+        tif_path = output_dir / f"{z_value:.1f}.tif"
 
         with tempfile.NamedTemporaryFile(suffix=".tif") as tmp_tif:
             tmp_path = Path(tmp_tif.name)
             splitter.write_output_file(i_roi=roi_idx, z_value=z_value, output_path=tmp_path)
             img_array = np.array(Image.open(tmp_path))
 
-        # Normalize and save PNG
-        img_min, img_max = img_array.min(), img_array.max()
-        if img_max > img_min:
-            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-        else:
-            img_scaled = np.zeros_like(img_array, dtype=np.uint8)
-
-        Image.fromarray(img_scaled).save(png_path)
-        print(f"Saved PNG: {png_path}")
+        # Save as float32 TIF to preserve raw values for downstream normalization
+        tifffile.imwrite(tif_path, img_array.astype(np.float32))
+        print(f"Saved TIF: {tif_path}")
 
 
 

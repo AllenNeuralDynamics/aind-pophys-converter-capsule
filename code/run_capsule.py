@@ -186,17 +186,24 @@ def pair_depth_tifs_with_avg_depth_pngs(
 
         # Read parent TIF using tifffile (PIL cannot read float64 TIFFs)
         with tifffile.TiffFile(raw_tif_path) as tif:
-            tif_array = tif.asarray()
-        # Normalize to uint8 for display
-        tif_min, tif_max = tif_array.min(), tif_array.max()
-        if tif_max > tif_min:
-            tif_scaled = ((tif_array - tif_min) / (tif_max - tif_min) * 255).astype(np.uint8)
-        else:
-            tif_scaled = np.zeros_like(tif_array, dtype=np.uint8)
-        raw_img = Image.fromarray(tif_scaled)
+            tif_array = tif.asarray().astype(np.float64)
 
-        # Read child PNG (PIL-compatible)
-        avg_img = Image.open(png_path)
+        # Read child PNG as float array for consistent scaling
+        child_array = np.array(Image.open(png_path)).astype(np.float64)
+
+        # Use parent 5th/95th percentiles as shared intensity bounds for both images
+        p_low = np.percentile(tif_array, 5)
+        p_high = np.percentile(tif_array, 95)
+
+        def scale_to_uint8(arr, low, high):
+            if high > low:
+                scaled = (arr - low) / (high - low) * 255
+            else:
+                scaled = np.zeros_like(arr)
+            return np.clip(scaled, 0, 255).astype(np.uint8)
+
+        raw_img = Image.fromarray(scale_to_uint8(tif_array, p_low, p_high))
+        avg_img = Image.fromarray(scale_to_uint8(child_array, p_low, p_high))
 
         # Add borders + bottom-center labels
         raw_img = add_border_and_label(raw_img, "Parent")

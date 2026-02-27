@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytz
+import tifffile
 from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
                                                    QCMetric, QCStatus, Stage,
                                                    Status)
@@ -183,7 +184,18 @@ def pair_depth_tifs_with_avg_depth_pngs(
         closest_z = min(z_to_png.keys(), key=lambda z: abs(z - abs(scanfield_z)))
         png_path = z_to_png[closest_z]
 
-        raw_img = Image.open(raw_tif_path)
+        # Read parent TIF using tifffile (PIL cannot read float64 TIFFs)
+        with tifffile.TiffFile(raw_tif_path) as tif:
+            tif_array = tif.asarray()
+        # Normalize to uint8 for display
+        tif_min, tif_max = tif_array.min(), tif_array.max()
+        if tif_max > tif_min:
+            tif_scaled = ((tif_array - tif_min) / (tif_max - tif_min) * 255).astype(np.uint8)
+        else:
+            tif_scaled = np.zeros_like(tif_array, dtype=np.uint8)
+        raw_img = Image.fromarray(tif_scaled)
+
+        # Read child PNG (PIL-compatible)
         avg_img = Image.open(png_path)
 
         # Add borders + bottom-center labels

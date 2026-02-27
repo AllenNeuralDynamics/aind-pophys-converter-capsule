@@ -1,6 +1,6 @@
-# hash:sha256:63f818bd7cde57de17416812706a2d3940f7489e969f8825aa26e4b9beacbcc7
+# hash:sha256:b9d0616de1e4a61eab54d3fc8aeb362ebde0db4dfe49f97110cac02cb2726243
 ARG REGISTRY_HOST
-FROM $REGISTRY_HOST/codeocean/code-server-python-extensions-pack:code-server4.108.2python3.12.4aind-metadata-mcp0.5.2withDOTFILES_REPOsupport
+FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS

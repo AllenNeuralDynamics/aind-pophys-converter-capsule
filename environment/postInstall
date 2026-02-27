@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+cd /
+git clone https://github.com/AllenNeuralDynamics/aind-pophys-converter.git
+cd aind-pophys-converter
+git checkout aa34628
+pip install -e .

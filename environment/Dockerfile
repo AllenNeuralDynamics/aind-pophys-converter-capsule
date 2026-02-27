@@ -1,4 +1,4 @@
-# hash:sha256:575f98b0bd2d2be52cd6f3f74531ffc7329b203575e26b91d2c38eb83b61a39b
+# hash:sha256:45bb9ae32361d880291f4aba6b80e60100d3967bf94596f46139e22aec96e816
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -11,17 +11,11 @@ RUN apt-get update \
         vim=2:8.2.3995-1ubuntu2.24 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN --mount=type=secret,id=git-access-token \
-    GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
-    pip install -U --no-cache-dir \
+RUN pip install -U --no-cache-dir \
     aind-data-schema==1.4.0 \
     aind-data-schema-models==0.7.5 \
-    aind_qcportal_schema \
+    aind-pophys-converter \
+    aind-qcportal-schema \
     pydantic-settings==2.8.1 \
     pytz \
     tifffile==2024.2.12
-#    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter@84f6a09cd1f37eff79109f9bb07a553150404db2#egg=aind-pophys-converter
-
-COPY postInstall /
-RUN --mount=type=secret,id=secrets . /run/secrets/secrets \
-    && /postInstall

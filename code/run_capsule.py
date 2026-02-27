@@ -109,8 +109,9 @@ def pair_depth_tifs_with_avg_depth_pngs(
     with borders and labels, and save the result. Also creates a QC evaluation
     JSON.
 
-    Both images are normalized to uint8 using the parent's 5th/95th percentiles
-    as shared intensity bounds, so they are displayed on the same contrast scale.
+    Each image is independently normalized to uint8 using its own 5th/95th
+    percentiles, so each is displayed with full contrast regardless of the
+    intensity domain differences between parent and child acquisitions.
 
     Parent TIFs are named <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif
     and come from the parent session. Child TIFs are written by write_avg_depth_slices
@@ -193,19 +194,15 @@ def pair_depth_tifs_with_avg_depth_pngs(
         with tifffile.TiffFile(child_tif_path) as tif:
             child_array = tif.asarray().astype(np.float64)
 
-        # Normalize both using parent 5th/95th percentiles as shared bounds
-        p_low = np.percentile(parent_array, 5)
-        p_high = np.percentile(parent_array, 95)
-        if p_high > p_low:
-            raw_img = Image.fromarray(
-                np.clip((parent_array - p_low) / (p_high - p_low) * 255, 0, 255).astype(np.uint8)
-            )
-            avg_img = Image.fromarray(
-                np.clip((child_array - p_low) / (p_high - p_low) * 255, 0, 255).astype(np.uint8)
-            )
-        else:
-            raw_img = Image.fromarray(np.zeros_like(parent_array, dtype=np.uint8))
-            avg_img = Image.fromarray(np.zeros_like(child_array, dtype=np.uint8))
+        # Normalize each image independently with its own 5th/95th percentiles
+        def _to_uint8(arr: np.ndarray) -> np.ndarray:
+            lo, hi = np.percentile(arr, 5), np.percentile(arr, 95)
+            if hi > lo:
+                return np.clip((arr - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
+            return np.zeros_like(arr, dtype=np.uint8)
+
+        raw_img = Image.fromarray(_to_uint8(parent_array))
+        avg_img = Image.fromarray(_to_uint8(child_array))
 
         # Add borders + bottom-center labels
         raw_img = add_border_and_label(raw_img, "Parent")

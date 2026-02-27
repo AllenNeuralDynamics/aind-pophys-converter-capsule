@@ -360,8 +360,9 @@ def run():
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
     
+    # TODO: dependency on platform.json is temporary, 
+    # until intended depth and parent info are in schema metadata
     platform_fp = next(input_dir.rglob("*platform.json"), None)
-
     if platform_fp is None:
         raise FileNotFoundError(f"No platform.json file found in {input_dir}")
 

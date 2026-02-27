@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"base_image": "codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04",
+	"base_image": "codeocean/code-server-python-extensions-pack:code-server4.108.2python3.12.4aind-metadata-mcp0.5.2withDOTFILES_REPOsupport",
 	"post_install": true,
 	"options": {
 		"registry_host_arg": true,

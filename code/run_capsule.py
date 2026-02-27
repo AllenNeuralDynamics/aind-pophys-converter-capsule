@@ -295,10 +295,12 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
     logging.info(f"Saved evaluation JSON -> {eval_out_path}")
 
 def is_child_session_via_platform_json(platform_fp: Path) -> bool:
+    print("checking is_child_session_via_platform_json", platform_fp)
     with open(platform_fp) as f:
         platform_json = json.load(f)
         parent_session = platform_json.get("parent_session", None)
 
+    print("returning", parent_session is not None)
     return parent_session is not None
 def run():
     """basic run function"""
@@ -307,8 +309,11 @@ def run():
     output_dir = Path(job_settings.output_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
+    
+    platform_fp = next(input_dir.rglob("*platform.json"), None)
 
-    platform_fp = next(input_dir.rglob("platform.json"), None)
+    if platform_fp is None:
+        raise FileNotFoundError(f"No platform.json file found in {input_dir}")
 
     with open(session_fp) as f:
         session = json.load(f)
@@ -332,7 +337,7 @@ def run():
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
         if len(split_directories) == 0:
-            runner = TiffSplitterCLI(job_settings)
+            runner: TiffSplitterCLI = TiffSplitterCLI(job_settings)
             runner.run_job()
         else:
             output_dir = Path(output_dir)
@@ -351,7 +356,7 @@ def run():
                 {avg_depth_path} -> {output_dir}"
             )
 
-            if platform_fp and is_child_session_via_platform_json(platform_fp):
+            if is_child_session_via_platform_json(platform_fp):
 
                 splitter = AvgImageTiffSplitter(avg_depth_path)
                 write_avg_depth_slices(splitter, output_dir)

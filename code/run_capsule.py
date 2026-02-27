@@ -338,7 +338,7 @@ def run():
         split_directories = find_split_directories(pophys_dir)
         if len(split_directories) == 0:
             runner: TiffSplitterCLI = TiffSplitterCLI(job_settings)
-            runner.run_job()
+            # runner.run_job()
         else:
             output_dir = Path(output_dir)
             for split_dir in split_directories:

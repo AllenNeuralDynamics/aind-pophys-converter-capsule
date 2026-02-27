@@ -188,22 +188,17 @@ def pair_depth_tifs_with_avg_depth_pngs(
         with tifffile.TiffFile(raw_tif_path) as tif:
             tif_array = tif.asarray().astype(np.float64)
 
-        # Read child PNG as float array for consistent scaling
-        child_array = np.array(Image.open(png_path)).astype(np.float64)
-
-        # Use parent 5th/95th percentiles as shared intensity bounds for both images
+        # Normalize parent using its 5th/95th percentiles
         p_low = np.percentile(tif_array, 5)
         p_high = np.percentile(tif_array, 95)
+        if p_high > p_low:
+            tif_scaled = (tif_array - p_low) / (p_high - p_low) * 255
+        else:
+            tif_scaled = np.zeros_like(tif_array)
+        raw_img = Image.fromarray(np.clip(tif_scaled, 0, 255).astype(np.uint8))
 
-        def scale_to_uint8(arr, low, high):
-            if high > low:
-                scaled = (arr - low) / (high - low) * 255
-            else:
-                scaled = np.zeros_like(arr)
-            return np.clip(scaled, 0, 255).astype(np.uint8)
-
-        raw_img = Image.fromarray(scale_to_uint8(tif_array, p_low, p_high))
-        avg_img = Image.fromarray(scale_to_uint8(child_array, p_low, p_high))
+        # Child PNG is already uint8 (0-255) from write_avg_depth_slices; use as-is
+        avg_img = Image.open(png_path)
 
         # Add borders + bottom-center labels
         raw_img = add_border_and_label(raw_img, "Parent")

@@ -2,7 +2,6 @@
 
 import json
 import logging
-import re
 import tempfile
 from datetime import datetime as dt
 from pathlib import Path
@@ -99,20 +98,31 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
 def pair_depth_tifs_with_avg_depth_pngs(
     pophys_dir: Path,
     avg_png_dir: Path,
+    platform_fp: Path,
     output_dir: Path,
 ) -> None:
     """
-    For each depth TIFF (named <id>_<scanfield_z>_depth.tif), find the closest
-    matching averaged-depth PNG based on the z-value encoded in the filename,
-    merge side-by-side with borders and labels, and save the result.
-    Also creates a QC evaluation JSON.
+    For each imaging plane defined in platform.json, locate the parent depth
+    TIFF by intended_depth and targeted_structure_id, find the closest child
+    averaged-depth PNG by abs(scanimage_scanfield_z), merge them side-by-side
+    with borders and labels, and save the result. Also creates a QC evaluation
+    JSON.
+
+    Parent TIFs are named <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif
+    and come from the parent session. Child PNGs are written by write_avg_depth_slices
+    from the current (child) session's averaged depth TIFF and are named by z-value.
 
     Parameters
     ----------
     pophys_dir : Path
-        Directory containing raw TIFF files named <id>_<scanfield_z>_depth.tif.
+        Directory containing parent depth TIFFs named
+        <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif.
     avg_png_dir : Path
-        Directory containing averaged-depth PNG files named by z-value.
+        Directory containing child averaged-depth PNG files named by z-value
+        (e.g. -276.0.png), written by write_avg_depth_slices.
+    platform_fp : Path
+        Path to the session platform.json, which provides intended_depth,
+        targeted_structure_id, and scanimage_scanfield_z for each imaging plane.
     output_dir : Path
         Directory to save merged PNGs and QC evaluation JSON.
 
@@ -122,27 +132,54 @@ def pair_depth_tifs_with_avg_depth_pngs(
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    # --- Collect z-values of PNG slices ---
+    # --- Load imaging planes from platform.json ---
+    with open(platform_fp) as f:
+        platform_json = json.load(f)
+
+    imaging_planes = [
+        plane
+        for group in platform_json.get("imaging_plane_groups", [])
+        for plane in group.get("imaging_planes", [])
+    ]
+
+    if not imaging_planes:
+        print("No imaging planes found in platform.json; skipping depth pairing.")
+        return
+
+    # --- Collect child PNGs keyed by abs z-value ---
     png_paths = list(avg_png_dir.glob("*.png"))
     z_to_png = {abs(float(p.stem)): p for p in png_paths}
 
-    # --- Find all depth TIFFs and parse scanfield_z from filename ---
-    tif_pattern = re.compile(r"^(.+)_(-?\d+)_depth\.tif$", re.IGNORECASE)
-    depth_tifs = []
-    for p in pophys_dir.glob("*_depth.tif"):
-        m = tif_pattern.match(p.name)
-        if m:
-            scanfield_z = int(m.group(2))
-            depth_tifs.append((p, scanfield_z))
-
-    if not depth_tifs:
-        print("No depth TIFFs matching <id>_<z>_depth.tif found.")
+    if not z_to_png:
+        print("No averaged-depth PNGs found; skipping depth pairing.")
         return
 
     metrics = []
 
-    for raw_tif_path, scanfield_z in sorted(depth_tifs, key=lambda x: x[1]):
-        # Find closest PNG slice
+    for plane in imaging_planes:
+        intended_depth = plane["intended_depth"]
+        targeted_structure_id = plane["targeted_structure_id"]
+        scanfield_z = plane["scanimage_scanfield_z"]
+
+        # --- Locate parent TIF by intended_depth + targeted_structure_id ---
+        parent_tifs = list(
+            pophys_dir.glob(f"*_{intended_depth}_{targeted_structure_id}_depth.tif")
+        )
+        if len(parent_tifs) == 0:
+            print(
+                f"WARNING: No parent TIF found for intended_depth={intended_depth}, "
+                f"targeted_structure_id={targeted_structure_id}; skipping."
+            )
+            continue
+        if len(parent_tifs) > 1:
+            print(
+                f"WARNING: Multiple parent TIFs found for intended_depth={intended_depth}, "
+                f"targeted_structure_id={targeted_structure_id}; "
+                f"using first: {parent_tifs[0].name}"
+            )
+        raw_tif_path = parent_tifs[0]
+
+        # --- Find closest child PNG by abs(scanimage_scanfield_z) ---
         closest_z = min(z_to_png.keys(), key=lambda z: abs(z - abs(scanfield_z)))
         png_path = z_to_png[closest_z]
 
@@ -150,8 +187,8 @@ def pair_depth_tifs_with_avg_depth_pngs(
         avg_img = Image.open(png_path)
 
         # Add borders + bottom-center labels
-        raw_img = add_border_and_label(raw_img, "Child")
-        avg_img = add_border_and_label(avg_img, "Parent")
+        raw_img = add_border_and_label(raw_img, "Parent")
+        avg_img = add_border_and_label(avg_img, "Child")
 
         # Merge side-by-side
         total_width = raw_img.width + avg_img.width
@@ -172,13 +209,14 @@ def pair_depth_tifs_with_avg_depth_pngs(
         except Exception as e:
             print(f"Failed to delete {png_path}: {e}")
 
-        unique_id = f"z{scanfield_z}"
+        unique_id = f"{targeted_structure_id}_{intended_depth}um"
 
         # --- Add QC Metric ---
         metric = QCMetric(
             name=f"{unique_id} Parent-Child FOV",
             description=(
-                f"{raw_tif_path.stem} at scanfield_z: {scanfield_z} "
+                f"{raw_tif_path.stem} (intended_depth={intended_depth}, "
+                f"structure={targeted_structure_id}, scanfield_z={scanfield_z}) "
                 f"paired with averaged PNG at z: {closest_z}"
             ),
             status_history=[PendingStatus()],
@@ -190,7 +228,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
                     "FOV does not match parent FOV.",
                 ],
                 status=[Status.PASS, Status.FAIL],
-            )
+            ),
         )
         metrics.append(metric)
 
@@ -202,7 +240,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
             metrics=metrics,
             modality=Modality.POPHYS,
             stage=Stage.RAW,
-            tags=["Operational QC"]
+            tags=["Operational QC"],
         )
         eval_out_path = output_dir / "merged_planes_evaluation.json"
         with open(eval_out_path, "w") as f:
@@ -363,6 +401,7 @@ def run():
                 pair_depth_tifs_with_avg_depth_pngs(
                     pophys_dir,
                     output_dir,
+                    platform_fp,
                     Path("/results/matched_tiff_vals"),
                 )
         create_vasculature(pophys_dir, output_dir)

@@ -6,8 +6,4 @@ ls /data
 
 # This is the master script for the capsule. When you click "Reproducible Run", the code in this file will execute.
 
-python -u run_capsule.py \
---input_dir /data \
---output_dir /results \
---temp_dir /scratch \
- 2>&1 | tee -a /results/capsule_output.log
+python -u run_capsule.py "$@"

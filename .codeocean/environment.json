@@ -1,6 +1,6 @@
 {
 	"version": 1,
-	"base_image": "codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04",
+	"base_image": "codeocean/code-server-python-extensions-pack:code-server4.108.2python3.12.4aind-metadata-mcp0.5.2withDOTFILES_REPOsupport",
 	"options": {
 		"registry_host_arg": true,
 		"git_ask_pass": true,
@@ -11,11 +11,15 @@
 			"packages": [
 				{
 					"name": "aind-data-schema",
-					"version": "1.4.0"
+					"version": "2.6.0"
 				},
 				{
 					"name": "aind-data-schema-models",
-					"version": "0.7.5"
+					"version": "5.4.1"
+				},
+				{
+					"name": "aind-log-utils",
+					"version": "0.2.6"
 				},
 				{
 					"name": "aind-pophys-converter",
@@ -23,7 +27,7 @@
 				},
 				{
 					"name": "aind-qcportal-schema",
-					"version": "0.4.0"
+					"version": "0.6.4"
 				},
 				{
 					"name": "pydantic-settings",

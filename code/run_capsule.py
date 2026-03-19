@@ -2,14 +2,13 @@
 
 import json
 import logging
-import re
 import tempfile
 from datetime import datetime as dt
 from pathlib import Path
-from typing import List
 
 import numpy as np
 import pytz
+import tifffile
 from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
                                                    QCMetric, QCStatus, Stage,
                                                    Status)
@@ -43,9 +42,9 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     debug: bool = False
 
 
-def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image.Image:
+def add_border_and_label(img: Image.Image, label: str, border: int = 5, font_size: int = 40) -> Image.Image:
     """
-    Add a border and a text label to an image (bottom-center).
+    Add a border and a text label to an image (top-center, above the image).
 
     Parameters
     ----------
@@ -55,6 +54,8 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
         Text label to add at the bottom center.
     border : int, optional
         Border size in pixels (default is 5).
+    font_size : int, optional
+        Font size for the label text (default is 40).
 
     Returns
     -------
@@ -68,57 +69,60 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
     if bordered.mode != "RGB":
         bordered = bordered.convert("RGB")
 
-    draw = ImageDraw.Draw(bordered)
+    font = ImageFont.load_default(size=font_size)
 
-    # Try to load a truetype font, fall back to default
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 20)
-    except IOError:
-        font = ImageFont.load_default()
+    # Measure text size using a temporary draw surface
+    tmp_draw = ImageDraw.Draw(bordered)
+    bbox = tmp_draw.textbbox((0, 0), label, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    label_area_h = text_h + 24  # padding above and below text
 
-    # --- Measure text size (compatibility across Pillow versions) ---
-    try:
-        # Preferred in modern Pillow
-        bbox = draw.textbbox((0, 0), label, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-    except AttributeError:
-        # Fallback for older Pillow
-        text_w, text_h = font.getsize(label)
+    # Create a new canvas with extra space at the top for the label
+    canvas = Image.new("RGB", (bordered.width, bordered.height + label_area_h), color="white")
+    canvas.paste(bordered, (0, label_area_h))
 
-    # Position: bottom center
-    x = (bordered.width - text_w) // 2
-    y = bordered.height - text_h - border - 5
+    draw = ImageDraw.Draw(canvas)
+    x = (canvas.width - text_w) // 2
+    y = (label_area_h - text_h) // 2
+    draw.text((x, y), label, fill="black", font=font)
 
-    # Draw background rectangle for readability
-    draw.rectangle([x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill="white")
-    draw.text((x, y), label, fill="red", font=font)
-
-    return bordered
+    return canvas
 
 
-def pair_exp_ids_with_avg_depth_pngs(
-    exp_ids: List[str],
-    session_json_path: Path,
+def pair_depth_tifs_with_avg_depth_pngs(
     pophys_dir: Path,
-    avg_png_dir: Path,
+    avg_slice_dir: Path,
+    platform_fp: Path,
     output_dir: Path,
 ) -> None:
     """
-    For each experiment ID, find the closest matching averaged-depth PNG
-    based on z-value, merge side-by-side with borders and labels, and
-    save the result. Also create a QC evaluation JSON.
+    For each imaging plane defined in platform.json, locate the parent depth
+    TIFF by intended_depth and targeted_structure_id, find the closest child
+    averaged-depth TIF by abs(scanimage_scanfield_z), merge them side-by-side
+    with borders and labels, and save the result. Also creates a QC evaluation
+    JSON.
+
+    Each image is independently normalized to uint8 using its own 5th/95th
+    percentiles. Parent depth TIFs (dedicated snapshots, uint16 raw counts ~600–1400)
+    and child averaged-depth TIFs (temporal mean of timeseries, values ~4–32) are
+    on fundamentally different intensity scales, so shared normalization is not meaningful.
+
+    Parent TIFs are named <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif
+    and come from the parent session. Child TIFs are written by write_avg_depth_slices
+    as float32 from the current (child) session's averaged depth TIFF.
 
     Parameters
     ----------
-    exp_ids : List[str]
-        List of experiment IDs to process.
-    session_json_path : Path
-        Path to the session.json file containing FOV info.
     pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
-    avg_png_dir : Path
-        Directory containing averaged-depth PNG files named by z-value.
+        Directory containing parent depth TIFFs named
+        <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif.
+    avg_slice_dir : Path
+        Directory containing child averaged-depth float32 TIF files named by
+        z-value (e.g. -276.0.tif), written by write_avg_depth_slices.
+    platform_fp : Path
+        Path to the session platform.json, which provides intended_depth,
+        targeted_structure_id, and scanimage_scanfield_z for each imaging plane.
     output_dir : Path
         Directory to save merged PNGs and QC evaluation JSON.
 
@@ -128,74 +132,111 @@ def pair_exp_ids_with_avg_depth_pngs(
     """
     output_dir.mkdir(exist_ok=True, parents=True)
 
-    # --- Load session JSON and FOVs ---
-    with open(session_json_path, "r") as f:
-        sj = json.load(f)
+    # --- Load imaging planes from platform.json ---
+    with open(platform_fp) as f:
+        platform_json = json.load(f)
 
-    fovs = []
-    for ds in sj.get("data_streams", []):
-        fovs.extend(ds.get("ophys_fovs", []))
-    if not fovs:
-        raise ValueError("No ophys_fovs found in session.json")
+    imaging_planes = [
+        plane
+        for group in platform_json.get("imaging_plane_groups", [])
+        for plane in group.get("imaging_planes", [])
+    ]
 
-    # --- Collect z-values of PNG slices ---
-    png_paths = list(avg_png_dir.glob("*.png"))
-    z_to_png = {abs(float(p.stem)): p for p in png_paths}
+    if not imaging_planes:
+        print("No imaging planes found in platform.json; skipping depth pairing.")
+        return
+
+    # --- Collect child TIFs keyed by abs z-value ---
+    child_tifs = list(avg_slice_dir.glob("*.tif"))
+    z_to_tif = {abs(float(p.stem)): p for p in child_tifs}
+
+    if not z_to_tif:
+        print("No averaged-depth TIFs found; skipping depth pairing.")
+        return
 
     metrics = []
 
-    for i, exp_id in enumerate(sorted(exp_ids, key=int)):
-        if i >= len(fovs):
-            print(f"Skipping exp_id {exp_id}: no matching FOV")
+    for plane in imaging_planes:
+        intended_depth = plane["intended_depth"]
+        targeted_structure_id = plane["targeted_structure_id"]
+        scanfield_z = plane["scanimage_scanfield_z"]
+
+        # --- Locate parent TIF by intended_depth + targeted_structure_id ---
+        parent_tifs = list(
+            pophys_dir.glob(f"*_{intended_depth}_{targeted_structure_id}_depth.tif")
+        )
+        if len(parent_tifs) == 0:
+            print(
+                f"WARNING: No parent TIF found for intended_depth={intended_depth}, "
+                f"targeted_structure_id={targeted_structure_id}; skipping."
+            )
             continue
+        if len(parent_tifs) > 1:
+            print(
+                f"WARNING: Multiple parent TIFs found for intended_depth={intended_depth}, "
+                f"targeted_structure_id={targeted_structure_id}; "
+                f"using first: {parent_tifs[0].name}"
+            )
+        raw_tif_path = parent_tifs[0]
 
-        fov = fovs[i]
-        scanfield_z = abs(fov["scanfield_z"]) # value for matching to png
-        fov_z = abs(fov["imaging_depth"]) # actual imaging depth 
+        # --- Find closest child TIF by abs(scanimage_scanfield_z) ---
+        closest_z = min(z_to_tif.keys(), key=lambda z: abs(z - abs(scanfield_z)))
+        child_tif_path = z_to_tif[closest_z]
 
-        # Find closest PNG slice
-        closest_z = min(z_to_png.keys(), key=lambda z: abs(z - scanfield_z))
-        png_path = z_to_png[closest_z]
+        # Read both as float64 arrays
+        with tifffile.TiffFile(raw_tif_path) as tif:
+            parent_array = tif.asarray().astype(np.float64)
+        with tifffile.TiffFile(child_tif_path) as tif:
+            child_array = tif.asarray().astype(np.float64)
 
-        # Load raw plane TIFF for this exp_id
-        raw_tif_path = pophys_dir / f"{exp_id}_depth.tif"
-        if not raw_tif_path.exists():
-            print(f"Skipping exp_id {exp_id}: " f"raw TIFF not found at {raw_tif_path}")
-            continue
-        raw_img = Image.open(raw_tif_path)
-        avg_img = Image.open(png_path)
+        # Normalize each image independently to its own 5th/95th percentiles
+        # (parent and child are on fundamentally different intensity scales)
+        def _to_uint8(arr: np.ndarray) -> np.ndarray:
+            lo, hi = np.percentile(arr, 5), np.percentile(arr, 95)
+            if hi > lo:
+                return np.clip((arr - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
+            return np.zeros_like(arr, dtype=np.uint8)
+
+        p_lo, p_hi = np.percentile(parent_array, 5), np.percentile(parent_array, 95)
+        c_lo, c_hi = np.percentile(child_array, 5), np.percentile(child_array, 95)
+        print(f"  Parent normalization: p5={p_lo:.1f}, p95={p_hi:.1f} (dtype={parent_array.dtype})")
+        print(f"  Child  normalization: p5={c_lo:.1f}, p95={c_hi:.1f} (dtype={child_array.dtype})")
+
+        raw_img = Image.fromarray(_to_uint8(parent_array))
+        avg_img = Image.fromarray(_to_uint8(child_array))
 
         # Add borders + bottom-center labels
-        raw_img = add_border_and_label(raw_img, "Child")
-        avg_img = add_border_and_label(avg_img, "Parent")
+        raw_img = add_border_and_label(raw_img, "Parent")
+        avg_img = add_border_and_label(avg_img, "Child")
 
         # Merge side-by-side
         total_width = raw_img.width + avg_img.width
         max_height = max(raw_img.height, avg_img.height)
-        merged = Image.new("RGB", (total_width, max_height), color="black")
+        merged = Image.new("RGB", (total_width, max_height), color="white")
         merged.paste(raw_img, (0, 0))
         merged.paste(avg_img, (raw_img.width, 0))
 
         # Save merged PNG
-        merged_path = output_dir / f"{exp_id}_merged.png"
+        merged_path = output_dir / f"{raw_tif_path.stem}_merged.png"
         merged.save(merged_path)
-        print(f"Saved merged image for exp_id {exp_id} -> {merged_path}")
+        print(f"Saved merged image for {raw_tif_path.name} -> {merged_path}")
 
-        # --- Delete the original averaged PNG ---
+        # --- Delete the original averaged TIF ---
         try:
-            png_path.unlink()
-            print(f"Deleted original averaged PNG -> {png_path}")
+            child_tif_path.unlink()
+            print(f"Deleted original averaged TIF -> {child_tif_path}")
         except Exception as e:
-            print(f"Failed to delete {png_path}: {e}")
+            print(f"Failed to delete {child_tif_path}: {e}")
 
-        unique_id = f"{fov.get('targeted_structure')}_{fov.get('index')}"
+        unique_id = f"{targeted_structure_id}_{intended_depth}um"
 
         # --- Add QC Metric ---
         metric = QCMetric(
-            name=f"{unique_id} Parent-Child FOV ",
+            name=f"{unique_id} Parent-Child FOV",
             description=(
-                f"{unique_id}, with actual imaging-depth: {fov_z} "
-                f"paired with averaged PNG at scanfield_z: {closest_z}"
+                f"{raw_tif_path.stem} (intended_depth={intended_depth}, "
+                f"structure={targeted_structure_id}, scanfield_z={scanfield_z}) "
+                f"paired with averaged PNG at z: {closest_z}"
             ),
             status_history=[PendingStatus()],
             reference=str(merged_path),
@@ -206,7 +247,7 @@ def pair_exp_ids_with_avg_depth_pngs(
                     "FOV does not match parent FOV.",
                 ],
                 status=[Status.PASS, Status.FAIL],
-            )
+            ),
         )
         metrics.append(metric)
 
@@ -218,7 +259,7 @@ def pair_exp_ids_with_avg_depth_pngs(
             metrics=metrics,
             modality=Modality.POPHYS,
             stage=Stage.RAW,
-            tags=["Operational QC"]
+            tags=["Operational QC"],
         )
         eval_out_path = output_dir / "merged_planes_evaluation.json"
         with open(eval_out_path, "w") as f:
@@ -231,53 +272,17 @@ def write_avg_depth_slices(splitter, output_dir: Path):
 
     for roi_idx, z_int in splitter.roi_z_int_manifest:
         z_value = splitter._z_from_int(z_int)
-        png_path = output_dir / f"{z_value:.1f}.png"
+        tif_path = output_dir / f"{z_value:.1f}.tif"
 
         with tempfile.NamedTemporaryFile(suffix=".tif") as tmp_tif:
             tmp_path = Path(tmp_tif.name)
             splitter.write_output_file(i_roi=roi_idx, z_value=z_value, output_path=tmp_path)
-            img_array = np.array(Image.open(tmp_path))
+            img_array = tifffile.imread(tmp_path)
 
-        # Normalize and save PNG
-        img_min, img_max = img_array.min(), img_array.max()
-        if img_max > img_min:
-            img_scaled = ((img_array - img_min) / (img_max - img_min) * 255).astype(np.uint8)
-        else:
-            img_scaled = np.zeros_like(img_array, dtype=np.uint8)
+        # Save as float32 TIF to preserve raw values for downstream normalization
+        tifffile.imwrite(tif_path, img_array.astype(np.float32))
+        print(f"Saved TIF: {tif_path}")
 
-        Image.fromarray(img_scaled).save(png_path)
-        print(f"Saved PNG: {png_path}")
-
-
-def get_exp_ids_from_pophys(pophys_dir: Path) -> List[str]:
-    """
-    Grab all experiment IDs from files like
-    <exp_id>_depth.tif in a pophys directory.
-    Returns a sorted list of IDs as strings.
-
-    Parameters
-    ----------
-    pophys_dir : Path
-        Directory containing raw TIFF files named <exp_id>_depth.tif.
-
-    Returns
-    -------
-    List[str]
-        Sorted list of experiment IDs as strings.
-    """
-    tif_pattern = re.compile(r"(\d+)_depth\.tif$", re.IGNORECASE)
-    exp_ids = []
-
-    for p in pophys_dir.glob("*_depth.tif"):
-        m = tif_pattern.search(p.name)
-        if m:
-            exp_ids.append(m.group(1))
-
-    if not exp_ids:
-        logging.info("No depth tiffs, likely a parent session")
-        return None
-
-    return sorted(exp_ids, key=int)
 
 
 def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
@@ -300,7 +305,7 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
         logging.info("No averaged depth TIFF files found for vasculature creation.")
         return
     vasculature_output_dir = output_dir / "vasculature"
-    vasculature_output_dir.mkdir()
+    vasculature_output_dir.mkdir(exist_ok=True, parents=True)
     vasculature_output_fp = vasculature_output_dir /  "vasculature.png"
     with Image.open(vasculature_fp) as im:
         im.save(vasculature_output_fp)
@@ -340,7 +345,14 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
         json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
     logging.info(f"Saved evaluation JSON -> {eval_out_path}")
 
+def is_child_session_via_platform_json(platform_fp: Path) -> bool:
+    print("checking is_child_session_via_platform_json", platform_fp)
+    with open(platform_fp) as f:
+        platform_json = json.load(f)
+        parent_session = platform_json.get("parent_session", None)
 
+    print("returning", parent_session is not None)
+    return parent_session is not None
 def run():
     """basic run function"""
     job_settings = JobSettings()
@@ -348,6 +360,12 @@ def run():
     output_dir = Path(job_settings.output_dir)
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
+    
+    # TODO: dependency on platform.json is temporary, 
+    # until intended depth and parent info are in schema metadata
+    platform_fp = next(input_dir.rglob("*platform.json"), None)
+    if platform_fp is None:
+        raise FileNotFoundError(f"No platform.json file found in {input_dir}")
 
     with open(session_fp) as f:
         session = json.load(f)
@@ -390,16 +408,14 @@ def run():
                 {avg_depth_path} -> {output_dir}"
             )
 
-            exp_ids = get_exp_ids_from_pophys(pophys_dir)
-            if exp_ids is not None:
+            if is_child_session_via_platform_json(platform_fp):
 
                 splitter = AvgImageTiffSplitter(avg_depth_path)
                 write_avg_depth_slices(splitter, output_dir)
-                pair_exp_ids_with_avg_depth_pngs(
-                    exp_ids,
-                    session_fp,
+                pair_depth_tifs_with_avg_depth_pngs(
                     pophys_dir,
                     output_dir,
+                    platform_fp,
                     Path("/results/matched_tiff_vals"),
                 )
         create_vasculature(pophys_dir, output_dir)

@@ -42,9 +42,9 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     debug: bool = False
 
 
-def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image.Image:
+def add_border_and_label(img: Image.Image, label: str, border: int = 5, font_size: int = 40) -> Image.Image:
     """
-    Add a border and a text label to an image (bottom-center).
+    Add a border and a text label to an image (top-center, above the image).
 
     Parameters
     ----------
@@ -54,6 +54,8 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
         Text label to add at the bottom center.
     border : int, optional
         Border size in pixels (default is 5).
+    font_size : int, optional
+        Font size for the label text (default is 40).
 
     Returns
     -------
@@ -67,33 +69,25 @@ def add_border_and_label(img: Image.Image, label: str, border: int = 5) -> Image
     if bordered.mode != "RGB":
         bordered = bordered.convert("RGB")
 
-    draw = ImageDraw.Draw(bordered)
+    font = ImageFont.load_default(size=font_size)
 
-    # Try to load a truetype font, fall back to default
-    try:
-        font = ImageFont.truetype("DejaVuSans.ttf", 20)
-    except IOError:
-        font = ImageFont.load_default()
+    # Measure text size using a temporary draw surface
+    tmp_draw = ImageDraw.Draw(bordered)
+    bbox = tmp_draw.textbbox((0, 0), label, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    label_area_h = text_h + 24  # padding above and below text
 
-    # --- Measure text size (compatibility across Pillow versions) ---
-    try:
-        # Preferred in modern Pillow
-        bbox = draw.textbbox((0, 0), label, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-    except AttributeError:
-        # Fallback for older Pillow
-        text_w, text_h = font.getsize(label)
+    # Create a new canvas with extra space at the top for the label
+    canvas = Image.new("RGB", (bordered.width, bordered.height + label_area_h), color="white")
+    canvas.paste(bordered, (0, label_area_h))
 
-    # Position: bottom center
-    x = (bordered.width - text_w) // 2
-    y = bordered.height - text_h - border - 5
+    draw = ImageDraw.Draw(canvas)
+    x = (canvas.width - text_w) // 2
+    y = (label_area_h - text_h) // 2
+    draw.text((x, y), label, fill="black", font=font)
 
-    # Draw background rectangle for readability
-    draw.rectangle([x - 4, y - 2, x + text_w + 4, y + text_h + 2], fill="white")
-    draw.text((x, y), label, fill="red", font=font)
-
-    return bordered
+    return canvas
 
 
 def pair_depth_tifs_with_avg_depth_pngs(
@@ -110,8 +104,9 @@ def pair_depth_tifs_with_avg_depth_pngs(
     JSON.
 
     Each image is independently normalized to uint8 using its own 5th/95th
-    percentiles, so each is displayed with full contrast regardless of the
-    intensity domain differences between parent and child acquisitions.
+    percentiles. Parent depth TIFs (dedicated snapshots, uint16 raw counts ~600–1400)
+    and child averaged-depth TIFs (temporal mean of timeseries, values ~4–32) are
+    on fundamentally different intensity scales, so shared normalization is not meaningful.
 
     Parent TIFs are named <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif
     and come from the parent session. Child TIFs are written by write_avg_depth_slices
@@ -194,12 +189,18 @@ def pair_depth_tifs_with_avg_depth_pngs(
         with tifffile.TiffFile(child_tif_path) as tif:
             child_array = tif.asarray().astype(np.float64)
 
-        # Normalize each image independently with its own 5th/95th percentiles
+        # Normalize each image independently to its own 5th/95th percentiles
+        # (parent and child are on fundamentally different intensity scales)
         def _to_uint8(arr: np.ndarray) -> np.ndarray:
             lo, hi = np.percentile(arr, 5), np.percentile(arr, 95)
             if hi > lo:
                 return np.clip((arr - lo) / (hi - lo) * 255, 0, 255).astype(np.uint8)
             return np.zeros_like(arr, dtype=np.uint8)
+
+        p_lo, p_hi = np.percentile(parent_array, 5), np.percentile(parent_array, 95)
+        c_lo, c_hi = np.percentile(child_array, 5), np.percentile(child_array, 95)
+        print(f"  Parent normalization: p5={p_lo:.1f}, p95={p_hi:.1f} (dtype={parent_array.dtype})")
+        print(f"  Child  normalization: p5={c_lo:.1f}, p95={c_hi:.1f} (dtype={child_array.dtype})")
 
         raw_img = Image.fromarray(_to_uint8(parent_array))
         avg_img = Image.fromarray(_to_uint8(child_array))
@@ -211,7 +212,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
         # Merge side-by-side
         total_width = raw_img.width + avg_img.width
         max_height = max(raw_img.height, avg_img.height)
-        merged = Image.new("RGB", (total_width, max_height), color="black")
+        merged = Image.new("RGB", (total_width, max_height), color="white")
         merged.paste(raw_img, (0, 0))
         merged.paste(avg_img, (raw_img.width, 0))
 
@@ -276,7 +277,7 @@ def write_avg_depth_slices(splitter, output_dir: Path):
         with tempfile.NamedTemporaryFile(suffix=".tif") as tmp_tif:
             tmp_path = Path(tmp_tif.name)
             splitter.write_output_file(i_roi=roi_idx, z_value=z_value, output_path=tmp_path)
-            img_array = np.array(Image.open(tmp_path))
+            img_array = tifffile.imread(tmp_path)
 
         # Save as float32 TIF to preserve raw values for downstream normalization
         tifffile.imwrite(tif_path, img_array.astype(np.float32))
@@ -389,7 +390,7 @@ def run():
         split_directories = find_split_directories(pophys_dir)
         if len(split_directories) == 0:
             runner = TiffSplitterCLI(job_settings)
-            runner.run_job()
+            # runner.run_job()
         else:
             output_dir = Path(output_dir)
             for split_dir in split_directories:

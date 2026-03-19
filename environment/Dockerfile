@@ -1,15 +1,10 @@
-# hash:sha256:b9d0616de1e4a61eab54d3fc8aeb362ebde0db4dfe49f97110cac02cb2726243
+# hash:sha256:b86ebb63db4d923b6bd32c8bdb25ebc12e1f2cff2a2aaff433e48aa05a8dfe30
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
-COPY git-askpass /
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        vim=2:8.2.3995-1ubuntu2.24 \
-    && rm -rf /var/lib/apt/lists/*
+COPY git-ask-pass /
 
 RUN pip install -U --no-cache-dir \
     aind-data-schema==1.4.0 \

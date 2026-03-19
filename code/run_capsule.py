@@ -361,12 +361,6 @@ def run():
     session_fp = next(input_dir.rglob("session.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
     
-    # TODO: dependency on platform.json is temporary, 
-    # until intended depth and parent info are in schema metadata
-    platform_fp = next(input_dir.rglob("*platform.json"), None)
-    if platform_fp is None:
-        raise FileNotFoundError(f"No platform.json file found in {input_dir}")
-
     with open(session_fp) as f:
         session = json.load(f)
     with open(data_description_fp) as f:
@@ -386,6 +380,11 @@ def run():
         bergamo_stitcher.run_converter()
     elif "multiplane" in data_description["name"]:
         # # --- normal multiplane splitting ---
+         # TODO: dependency on platform.json is temporary, 
+        # until intended depth and parent info are in schema metadata
+        platform_fp = next(input_dir.rglob("*platform.json"), None)
+        if platform_fp is None:
+            raise FileNotFoundError(f"No platform.json file found in {input_dir}")
         job_settings.input_dir = pophys_dir
         split_directories = find_split_directories(pophys_dir)
         if len(split_directories) == 0:

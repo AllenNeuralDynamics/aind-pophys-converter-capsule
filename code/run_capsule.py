@@ -9,9 +9,16 @@ from pathlib import Path
 import numpy as np
 import pytz
 import tifffile
-from aind_data_schema.core.quality_control import (Modality, QCEvaluation,
-                                                   QCMetric, QCStatus, Stage,
-                                                   Status)
+from aind_data_schema.core.acquisition import Acquisition
+from aind_data_schema.core.data_description import DataDescription
+from aind_data_schema.core.quality_control import (
+    QCMetric,
+    QCStatus,
+    QualityControl,
+    Stage,
+    Status,
+)
+from aind_data_schema_models.modalities import Modality
 from aind_qcportal_schema.metric_value import DropdownMetric
 from aind_pophys_converter.bergamo_stitcher import (BergamoSettings,
                                                     BergamoTiffStitcher)
@@ -40,6 +47,7 @@ class JobSettings(BaseSettings, cli_parse_args=True):
     temp_dir: str = None
     output_dir: str = None
     debug: bool = False
+    dump_every: int = 1000
 
 
 def add_border_and_label(img: Image.Image, label: str, border: int = 5, font_size: int = 40) -> Image.Image:
@@ -358,15 +366,15 @@ def run():
     job_settings = JobSettings()
     input_dir = Path(job_settings.input_dir)
     output_dir = Path(job_settings.output_dir)
-    session_fp = next(input_dir.rglob("session.json"))
+    acquisition_fp = next(input_dir.rglob("acquisition.json"))
     data_description_fp = next(input_dir.rglob("data_description.json"))
-    
-    with open(session_fp) as f:
-        session = json.load(f)
-    with open(data_description_fp) as f:
-        data_description = json.load(f)
+
+    acquisition = Acquisition.model_validate_json(acquisition_fp.read_text())
+    data_description = DataDescription.model_validate_json(
+        data_description_fp.read_text()
+    )
     pophys_dir = next(input_dir.rglob("pophys/"))
-    if "Bergamo" in session.get("rig_id", ""):
+    if "Bergamo" in acquisition.instrument_id:
         unique_id = "MOp2_3_0"  # TODO: read from CCF when available
         output_dir = output_dir / unique_id
         output_dir.mkdir(exist_ok=True)
@@ -374,11 +382,11 @@ def run():
             input_dir=pophys_dir,
             output_dir=output_dir,
             unique_id=unique_id,
-            session_fp=session_fp,
+            acquisition_fp=acquisition_fp,
         )
         bergamo_stitcher = BergamoTiffStitcher(bergamo_settings)
         bergamo_stitcher.run_converter()
-    elif "multiplane" in data_description["name"]:
+    elif "multiplane" in data_description.name:
         # # --- normal multiplane splitting ---
          # TODO: dependency on platform.json is temporary, 
         # until intended depth and parent info are in schema metadata

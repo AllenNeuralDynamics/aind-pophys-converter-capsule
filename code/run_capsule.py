@@ -396,7 +396,9 @@ def run():
         # # --- normal multiplane splitting ---
          # TODO: dependency on platform.json is temporary, 
         # until intended depth and parent info are in schema metadata
-        platform_fp = next(input_dir.rglob("*platform.json"), None)
+        # Use pophys_dir.glob (not input_dir.rglob) because rglob does not
+        # follow symlinks in Python <=3.12 and pophys/ is a symlink in dev.
+        platform_fp = next(pophys_dir.glob("*platform.json"), None)
         if platform_fp is None:
             raise FileNotFoundError(f"No platform.json file found in {input_dir}")
         job_settings.input_dir = pophys_dir

@@ -5,4 +5,4 @@ set -ex
 
 pip list 2>&1 | tee -a /results/pip_list.log
 
-python -u run_capsule.py --input_dir /scratch/data/ --output_dir /results/ --temp_dir /scratch/temp/ 2>&1 | tee -a /results/capsule_output.log
+python -u run_capsule.py --input_dir /scratch/data/ --output_dir /results/ --temp_dir /scratch/temp/ --debug True 2>&1 | tee -a /results/capsule_output.log

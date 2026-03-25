@@ -234,7 +234,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
         except Exception as e:
             print(f"Failed to delete {child_tif_path}: {e}")
 
-        unique_id = f"{targeted_structure_id}_{intended_depth}um"
+        unique_id = f"{targeted_structure_id}_{intended_depth}"
 
         # --- Write QC Metric ---
         metric = QCMetric(

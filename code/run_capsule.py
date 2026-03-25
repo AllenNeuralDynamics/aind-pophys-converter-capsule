@@ -162,8 +162,6 @@ def pair_depth_tifs_with_avg_depth_pngs(
         print("No averaged-depth TIFs found; skipping depth pairing.")
         return
 
-    metrics = []
-
     for plane in imaging_planes:
         intended_depth = plane["intended_depth"]
         targeted_structure_id = plane["targeted_structure_id"]
@@ -238,13 +236,22 @@ def pair_depth_tifs_with_avg_depth_pngs(
 
         unique_id = f"{targeted_structure_id}_{intended_depth}um"
 
-        # --- Add QC Metric ---
+        # --- Write QC Metric ---
         metric = QCMetric(
             name=f"{unique_id} Parent-Child FOV",
+            modality=Modality.POPHYS,
+            stage=Stage.RAW,
+            tags={
+                "evaluation": "Op. QC: Field-of-view Matching",
+                "type": "Operational QC",
+            },
             description=(
-                f"{raw_tif_path.stem} (intended_depth={intended_depth}, "
-                f"structure={targeted_structure_id}, scanfield_z={scanfield_z}) "
-                f"paired with averaged PNG at z: {closest_z}"
+                f"Side-by-side comparison of the parent session depth snapshot "
+                f"({raw_tif_path.stem}, intended_depth={intended_depth}µm, "
+                f"structure={targeted_structure_id}) and the current session's "
+                f"averaged-depth image at the closest matching z-plane "
+                f"(child z: {closest_z}µm). "
+                f"Pass if the fields of view align spatially across sessions."
             ),
             status_history=[PendingStatus()],
             reference=str(merged_path),
@@ -257,22 +264,10 @@ def pair_depth_tifs_with_avg_depth_pngs(
                 status=[Status.PASS, Status.FAIL],
             ),
         )
-        metrics.append(metric)
-
-    if metrics:
-        evaluation = QCEvaluation(
-            name="Op. QC: Field-of-view Matching",
-            description="QC evaluation of merged raw TIFFs and "
-            "closest averaged depth PNG slices",
-            metrics=metrics,
-            modality=Modality.POPHYS,
-            stage=Stage.RAW,
-            tags=["Operational QC"],
-        )
-        eval_out_path = output_dir / "merged_planes_evaluation.json"
-        with open(eval_out_path, "w") as f:
-            json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
-        print(f"Saved evaluation JSON -> {eval_out_path}")
+        metric_out_path = output_dir / f"{unique_id}_fov_metric.json"
+        with open(metric_out_path, "w") as f:
+            json.dump(json.loads(metric.model_dump_json()), f, indent=4)
+        print(f"Saved QC metric -> {metric_out_path}")
 
 
 def write_avg_depth_slices(splitter, output_dir: Path):
@@ -320,8 +315,19 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
 
     logging.info(f"Saved vasculature image -> {vasculature_output_fp}")
     metric = QCMetric(
-        name="Vasculature_image",
-        description="Vasculature image to assess brain health and window clarity",
+        name="Vasculature Image",
+        modality=Modality.POPHYS,
+        stage=Stage.RAW,
+        tags={
+            "evaluation": "Op. QC: Window Clarity",
+            "type": "Operational QC",
+        },
+        description=(
+            "Vasculature image captured at session start to assess brain surface "
+            "health and cranial window clarity. Select the option that best describes "
+            "the observed surface condition. Bruising, bubbles, or discoloration may "
+            "indicate compromised tissue or optical path quality."
+        ),
         status_history=[PendingStatus()],
         reference=str(vasculature_output_fp),
         value=DropdownMetric(
@@ -334,24 +340,24 @@ def create_vasculature(pophys_dir: Path, output_dir: Path) -> None:
                 "Vascularization of brain surface",
                 "Discoloration of brain surface (white)",
                 "Bubbles in objective immersion present, but do NOT impact imaging quality",
-                "Bubbles in objective immersion impact imaging quality"
+                "Bubbles in objective immersion impact imaging quality",
             ],
-            status=[Status.PASS, Status.PASS, Status.PASS, Status.FAIL, Status.PASS, Status.PASS, Status.PASS, Status.FAIL],
-        )
+            status=[
+                Status.PASS,
+                Status.PASS,
+                Status.PASS,
+                Status.FAIL,
+                Status.PASS,
+                Status.PASS,
+                Status.PASS,
+                Status.FAIL,
+            ],
+        ),
     )
-    
-    evaluation = QCEvaluation(
-        name="Op. QC: Window Clarity",
-        description="QC evaluation of vasculature image",
-        metrics=[metric],
-        modality=Modality.POPHYS,
-        stage=Stage.RAW,
-        tags=["Operational QC"]
-    )
-    eval_out_path = vasculature_output_dir / "vasculature_evaluation.json"
-    with open(eval_out_path, "w") as f:
-        json.dump(json.loads(evaluation.model_dump_json()), f, indent=4)
-    logging.info(f"Saved evaluation JSON -> {eval_out_path}")
+    metric_out_path = vasculature_output_dir / "vasculature_metric.json"
+    with open(metric_out_path, "w") as f:
+        json.dump(json.loads(metric.model_dump_json()), f, indent=4)
+    logging.info(f"Saved QC metric -> {metric_out_path}")
 
 def is_child_session_via_platform_json(platform_fp: Path) -> bool:
     print("checking is_child_session_via_platform_json", platform_fp)

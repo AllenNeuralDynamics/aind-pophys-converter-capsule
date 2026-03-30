@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x /root/capsule/code/assemble_test_data.sh /root/capsule/code/_dev_startup.sh)",
+      "Bash(bash /root/capsule/code/_dev_startup.sh)",
+      "Read(//data/multiplane-ophys_839909_2026-02-26_15-11-01/pophys/**)",
+      "Bash(pip show:*)",
+      "Bash(pip download:*)",
+      "Bash(python -c \":*)",
+      "Bash(python -c \"import run_capsule; print\\(''imports OK''\\)\")",
+      "Bash(python -c \"from aind_data_schema.core.acquisition import Acquisition; from aind_data_schema.core.data_description import DataDescription; print\\(''OK''\\)\")",
+      "Bash(python -c \"import run_capsule; print\\(''capsule OK''\\)\")",
+      "Bash(python -c \"from aind_pophys_converter import bergamo_stitcher, mesoscope_splitter; print\\(''library OK''\\)\")",
+      "Bash(bash _dev_startup.sh)",
+      "Bash(bash run:*)",
+      "Read(//data/multiplane-ophys_839909_2026-02-26_15-11-01/**)",
+      "Read(//scratch/data/**)",
+      "Bash(ls /scratch/data/pophys/*platform*)",
+      "Bash(python3 -c \":*)",
+      "Bash(python -c \"from aind_pophys_converter.job import run; print\\(''imports OK''\\)\")",
+      "Bash(python -m pytest tests/ -x --tb=short -q)",
+      "Bash(python -m coverage run -m unittest discover tests/)",
+      "Bash(pip install:*)",
+      "Bash(python -m unittest discover tests/)",
+      "Bash(python -m unittest test_full_field_utils test_roi_insertion)",
+      "Bash(python -m unittest test_bergamo_stitcher test_mesoscope_splitter test_qc)",
+      "Bash(python -m unittest discover tests/ -v)",
+      "Bash(python -c \"from aind_data_schema.core.quality_control import QCStatus; from datetime import datetime; import pytz; tz=pytz.timezone\\(''America/Los_Angeles''\\); s=QCStatus\\(evaluator=''x'', status=''Pass'', timestamp=datetime.now\\(tz\\).isoformat\\(\\)\\); print\\(type\\(s.timestamp\\), repr\\(s.timestamp\\)\\)\")",
+      "Bash(wc -l /root/capsule/scratch/aind-pophys-converter/src/aind_pophys_converter/*.py)",
+      "Bash(grep -l \"acquisition.json\\\\|session.json\" /root/capsule/scratch/aind-pophys-converter/tests/*.py)",
+      "Read(//data/**)",
+      "Read(//data/single-plane-ophys_767715_2025-07-25_17-40-22/**)"
+    ]
+  }
+}

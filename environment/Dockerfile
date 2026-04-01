@@ -1,17 +1,19 @@
-# hash:sha256:5ba56bdc47e3605e96b99ae09fbbd7347c04bb06ed4514ca4d9ab856d9735b01
+# hash:sha256:d25b922db88a297286481310a60d89757fbfe78a9062f8c17f94d71a469310be
 ARG REGISTRY_HOST
-FROM $REGISTRY_HOST/codeocean/code-server-python-extensions-pack:code-server4.108.2python3.12.4aind-metadata-mcp0.5.2withDOTFILES_REPOsupport
+FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
 COPY git-ask-pass /
 
-RUN pip install -U --no-cache-dir \
+RUN --mount=type=secret,id=git-access-token \
+    GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
+    pip install -U --no-cache-dir \
     aind-data-schema==2.6.0 \
     aind-data-schema-models==5.4.1 \
     aind-log-utils==0.2.6 \
-    aind-pophys-converter==0.0.1 \
     aind-qcportal-schema==0.6.4 \
     pydantic-settings==2.8.1 \
     pytz==2025.2 \
-    tifffile==2024.2.12
+    tifffile==2024.2.12 \
+    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@38eb0ae2133b6e427588d3a103498aa2cba3082e#egg=aind-pophys-converter

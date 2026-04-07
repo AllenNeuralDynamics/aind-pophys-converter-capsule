@@ -375,6 +375,7 @@ def run():
             output_dir=output_dir,
             unique_id=unique_id,
             session_fp=session_fp,
+            debug=job_settings.debug,
         )
         bergamo_stitcher = BergamoTiffStitcher(bergamo_settings)
         bergamo_stitcher.run_converter()

@@ -98,10 +98,9 @@ def pair_depth_tifs_with_avg_depth_pngs(
 ) -> None:
     """
     For each imaging plane defined in platform.json, locate the parent depth
-    TIFF by intended_depth and targeted_structure_id, find the closest child
-    averaged-depth TIF by abs(scanimage_scanfield_z), merge them side-by-side
-    with borders and labels, and save the result. Also creates a QC evaluation
-    JSON.
+    TIFF by intended_depth and targeted_structure_id, find the matching child
+    averaged-depth TIF by intended_depth, merge them side-by-side with borders
+    and labels, and save the result. Also creates a QC evaluation JSON.
 
     Each image is independently normalized to uint8 using its own 5th/95th
     percentiles. Parent depth TIFs (dedicated snapshots, uint16 raw counts ~600–1400)
@@ -110,7 +109,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
 
     Parent TIFs are named <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif
     and come from the parent session. Child TIFs are written by write_avg_depth_slices
-    as float32 from the current (child) session's averaged depth TIFF.
+    as float32 named by intended_depth (e.g. 160.tif).
 
     Parameters
     ----------
@@ -119,7 +118,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
         <timestamp>_<intended_depth>_<targeted_structure_id>_depth.tif.
     avg_slice_dir : Path
         Directory containing child averaged-depth float32 TIF files named by
-        z-value (e.g. -276.0.tif), written by write_avg_depth_slices.
+        intended_depth (e.g. 160.tif), written by write_avg_depth_slices.
     platform_fp : Path
         Path to the session platform.json, which provides intended_depth,
         targeted_structure_id, and scanimage_scanfield_z for each imaging plane.
@@ -146,11 +145,17 @@ def pair_depth_tifs_with_avg_depth_pngs(
         print("No imaging planes found in platform.json; skipping depth pairing.")
         return
 
-    # --- Collect child TIFs keyed by abs z-value ---
+    # --- Collect child TIFs keyed by (targeted_structure_id, intended_depth) ---
+    # Filenames are <structure_id>_<intended_depth>.tif
     child_tifs = list(avg_slice_dir.glob("*.tif"))
-    z_to_tif = {abs(float(p.stem)): p for p in child_tifs}
+    child_tif_lookup = {}
+    for p in child_tifs:
+        parts = p.stem.rsplit("_", 1)
+        if len(parts) == 2:
+            structure_id, depth_str = parts
+            child_tif_lookup[(structure_id, int(float(depth_str)))] = p
 
-    if not z_to_tif:
+    if not child_tif_lookup:
         print("No averaged-depth TIFs found; skipping depth pairing.")
         return
 
@@ -179,9 +184,15 @@ def pair_depth_tifs_with_avg_depth_pngs(
             )
         raw_tif_path = parent_tifs[0]
 
-        # --- Find closest child TIF by abs(scanimage_scanfield_z) ---
-        closest_z = min(z_to_tif.keys(), key=lambda z: abs(z - abs(scanfield_z)))
-        child_tif_path = z_to_tif[closest_z]
+        # --- Find child TIF by (targeted_structure_id, intended_depth) ---
+        child_tif_path = child_tif_lookup.get((targeted_structure_id, intended_depth))
+        if child_tif_path is None:
+            print(
+                f"WARNING: No child TIF found for "
+                f"structure={targeted_structure_id}, "
+                f"intended_depth={intended_depth}; skipping."
+            )
+            continue
 
         # Read both as float64 arrays
         with tifffile.TiffFile(raw_tif_path) as tif:
@@ -236,7 +247,7 @@ def pair_depth_tifs_with_avg_depth_pngs(
             description=(
                 f"{raw_tif_path.stem} (intended_depth={intended_depth}, "
                 f"structure={targeted_structure_id}, scanfield_z={scanfield_z}) "
-                f"paired with averaged PNG at z: {closest_z}"
+                f"paired with child at intended_depth={intended_depth}"
             ),
             status_history=[PendingStatus()],
             reference=str(merged_path),
@@ -267,12 +278,28 @@ def pair_depth_tifs_with_avg_depth_pngs(
         print(f"Saved evaluation JSON -> {eval_out_path}")
 
 
-def write_avg_depth_slices(splitter, output_dir: Path):
+def write_avg_depth_slices(splitter, output_dir: Path, scanfield_z_to_plane: dict):
     output_dir.mkdir(exist_ok=True, parents=True)
 
     for roi_idx, z_int in splitter.roi_z_int_manifest:
         z_value = splitter._z_from_int(z_int)
-        tif_path = output_dir / f"{z_value:.1f}.tif"
+
+        eps = 0.01
+        plane_info = scanfield_z_to_plane.get(z_value)
+        if plane_info is None:
+            # Fall back to closest match within epsilon
+            best_key = min(scanfield_z_to_plane.keys(), key=lambda k: abs(k - z_value))
+            if abs(best_key - z_value) <= eps:
+                plane_info = scanfield_z_to_plane[best_key]
+            else:
+                raise RuntimeError(
+                    f"scanfield_z={z_value} from TIFF metadata not found in "
+                    f"platform.json (nearest: {best_key}, diff={abs(best_key - z_value):.6f}). "
+                    f"Known values: {list(scanfield_z_to_plane.keys())}"
+                )
+        intended_depth = plane_info["intended_depth"]
+        structure_id = plane_info["targeted_structure_id"]
+        tif_path = output_dir / f"{structure_id}_{intended_depth}.tif"
 
         with tempfile.NamedTemporaryFile(suffix=".tif") as tmp_tif:
             tmp_path = Path(tmp_tif.name)
@@ -409,9 +436,23 @@ def run():
             )
 
             if is_child_session_via_platform_json(platform_fp):
+                with open(platform_fp) as f:
+                    platform_json = json.load(f)
+                imaging_planes = [
+                    plane
+                    for group in platform_json.get("imaging_plane_groups", [])
+                    for plane in group.get("imaging_planes", [])
+                ]
+                scanfield_z_to_plane = {
+                    p["scanimage_scanfield_z"]: {
+                        "intended_depth": p["intended_depth"],
+                        "targeted_structure_id": p["targeted_structure_id"],
+                    }
+                    for p in imaging_planes
+                }
 
                 splitter = AvgImageTiffSplitter(avg_depth_path)
-                write_avg_depth_slices(splitter, output_dir)
+                write_avg_depth_slices(splitter, output_dir, scanfield_z_to_plane)
                 pair_depth_tifs_with_avg_depth_pngs(
                     pophys_dir,
                     output_dir,

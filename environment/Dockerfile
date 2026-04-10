@@ -1,4 +1,4 @@
-# hash:sha256:34c43499e2d3b5216614377b4a21bba315e67fc010f0bbd7d4f1677ecb11e2e0
+# hash:sha256:a8ad1129e5fc64f8ad5f2b5a5545b3d2622e1b7ae6b4944ec9e208a6d2c3de8c
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -6,14 +6,16 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG GIT_ASKPASS
 COPY git-ask-pass /
 
-RUN pip install -U --no-cache-dir \
+RUN --mount=type=secret,id=git-access-token \
+    GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
+    pip install -U --no-cache-dir \
     aind-data-schema==1.4.0 \
     aind-data-schema-models==0.7.5 \
-    aind-pophys-converter==0.0.1 \
     aind-qcportal-schema==0.4.0 \
     pydantic-settings==2.8.1 \
     pytz==2025.2 \
-    tifffile==2024.2.12
+    tifffile==2024.2.12 \
+    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@776930e#egg=aind-pophys-converter
 
 ADD "https://github.com/coder/code-server/releases/download/v4.100.3/code-server-4.100.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
 

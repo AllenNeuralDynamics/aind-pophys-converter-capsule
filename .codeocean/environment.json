@@ -18,12 +18,11 @@
 					"version": "0.7.5"
 				},
 				{
-					"name": "aind-pophys-converter",
-					"version": "0.0.1"
-				},
-				{
 					"name": "aind-qcportal-schema",
 					"version": "0.4.0"
+				},
+				{
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@776930e#egg=aind-pophys-converter"
 				},
 				{
 					"name": "pydantic-settings",

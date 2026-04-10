@@ -1,4 +1,4 @@
-# hash:sha256:9488bd4ffa567b23c748129ca939770fb4433001c0a107c92ea256f109579584
+# hash:sha256:bf1f7c0ffc3c253340afeafddc7160f7a0cc8c59b99c3e8afc8cc6e4e4faada6
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -15,7 +15,7 @@ RUN --mount=type=secret,id=git-access-token \
     pydantic-settings==2.8.1 \
     pytz==2025.2 \
     tifffile==2024.2.12 \
-    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@7493e12e#egg=aind-pophys-converter
+    -e git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@7493e12#egg=aind-pophys-converter
 
 ADD "https://github.com/coder/code-server/releases/download/v4.100.3/code-server-4.100.3-linux-amd64.tar.gz" /.code-server/code-server.tar.gz
 

@@ -22,7 +22,7 @@
 					"version": "0.4.0"
 				},
 				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@7493e12e#egg=aind-pophys-converter"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@7493e12#egg=aind-pophys-converter"
 				},
 				{
 					"name": "pydantic-settings",

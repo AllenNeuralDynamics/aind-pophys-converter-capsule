@@ -4,6 +4,22 @@
 		{
 			"id": "3e574298-6e20-41d8-9a2a-1c63454844a0",
 			"mount": "single-plane-ophys_767715_2025-01-31_18-15-21"
+		},
+		{
+			"id": "559b2b6d-0fb2-46ba-9c6a-3eaf4bf346c2",
+			"mount": "multiplane-ophys_823831_2026-01-27_09-38-51"
+		},
+		{
+			"id": "9c49e90a-b257-44ab-b24a-5074638c145c",
+			"mount": "multiplane-ophys_827543_2026-01-16_14-03-23"
+		},
+		{
+			"id": "f11c6eef-7793-4a4c-bea9-9997788a9e63",
+			"mount": "multiplane-ophys_843001_2026-03-25_12-01-30"
+		},
+		{
+			"id": "f9ddb924-7a34-4320-b65a-cfb5c89aa0c7",
+			"mount": "multiplane-ophys_843001_2026-03-12_12-24-55"
 		}
 	]
 }

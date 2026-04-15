@@ -2,8 +2,32 @@
 	"version": 1,
 	"attached_datasets": [
 		{
-			"id": "3e574298-6e20-41d8-9a2a-1c63454844a0",
-			"mount": "single-plane-ophys_767715_2025-01-31_18-15-21"
+			"id": "065b8380-f3c5-426c-b4f6-d042afcd7c42",
+			"mount": "multiplane-ophys_839909_2026-02-26_15-11-01_metadata-upgrader-split-v2-metadata"
+		},
+		{
+			"id": "17ae3eed-ce82-47f1-ad54-1a597c39447c",
+			"mount": "multiplane-ophys_839909_2026-02-26_15-11-01"
+		},
+		{
+			"id": "305832c0-7400-44a2-910a-f18247a3163e",
+			"mount": "single-plane-ophys_767715_2025-07-25_17-40-22_metadata-upgrader-split-v2-metadata"
+		},
+		{
+			"id": "559b2b6d-0fb2-46ba-9c6a-3eaf4bf346c2",
+			"mount": "multiplane-ophys_823831_2026-01-27_09-38-51"
+		},
+		{
+			"id": "e37129e2-7666-47b6-8f10-b086cd3b30f8",
+			"mount": "multiplane-ophys_839909_2026-02-26_15-11-01_v2"
+		},
+		{
+			"id": "e5a7daff-89c3-4284-95cb-038cdd641a03",
+			"mount": "single-plane-ophys_767715_2025-07-25_17-40-22"
+		},
+		{
+			"id": "eb71665c-d69c-4ba0-8d99-a169a4f284d5",
+			"mount": "single-plane-ophys_767715_2025-07-25_17-40-22_v2"
 		}
 	]
 }

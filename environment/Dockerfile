@@ -1,4 +1,4 @@
-# hash:sha256:ca4bfeb0e3e665d9f8ab0b1307e61c47d98b72531dc3b76e21d9447049c560c6
+# hash:sha256:d25b922db88a297286481310a60d89757fbfe78a9062f8c17f94d71a469310be
 ARG REGISTRY_HOST
 FROM $REGISTRY_HOST/codeocean/mambaforge3:24.5.0-0-python3.12.4-ubuntu22.04
 
@@ -9,7 +9,7 @@ COPY git-ask-pass /
 RUN --mount=type=secret,id=git-access-token \
     GIT_ACCESS_TOKEN="$(cat /run/secrets/git-access-token)" \
     pip install -U --no-cache-dir \
-    aind-data-schema \
+    aind-data-schema==2.6.0 \
     aind-data-schema-models==5.4.1 \
     aind-log-utils==0.2.6 \
     aind-qcportal-schema==0.6.4 \

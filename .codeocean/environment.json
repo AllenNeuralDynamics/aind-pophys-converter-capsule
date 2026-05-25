@@ -7,7 +7,7 @@
 		"mount_secrets": true
 	},
 	"installers": {
-		"pip": {
+		"pip3": {
 			"packages": [
 				{
 					"name": "aind-data-schema",
@@ -18,12 +18,11 @@
 					"version": "0.7.5"
 				},
 				{
-					"name": "aind-pophys-converter",
-					"version": "0.0.1"
-				},
-				{
 					"name": "aind-qcportal-schema",
 					"version": "0.4.0"
+				},
+				{
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@v0.1.1#egg=aind-pophys-converter"
 				},
 				{
 					"name": "pydantic-settings",

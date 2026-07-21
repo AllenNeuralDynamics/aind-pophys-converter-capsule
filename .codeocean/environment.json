@@ -7,38 +7,10 @@
 		"mount_secrets": true
 	},
 	"installers": {
-		"pip": {
+		"pip3": {
 			"packages": [
 				{
-					"name": "aind-data-schema",
-					"version": "2.6.0"
-				},
-				{
-					"name": "aind-data-schema-models",
-					"version": "5.4.1"
-				},
-				{
-					"name": "aind-log-utils",
-					"version": "0.2.6"
-				},
-				{
-					"name": "aind-qcportal-schema",
-					"version": "0.6.4"
-				},
-				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@38eb0ae2133b6e427588d3a103498aa2cba3082e#egg=aind-pophys-converter"
-				},
-				{
-					"name": "pydantic-settings",
-					"version": "2.8.1"
-				},
-				{
-					"name": "pytz",
-					"version": "2025.2"
-				},
-				{
-					"name": "tifffile",
-					"version": "2024.2.12"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@5e5ae56#egg=aind-pophys-converter"
 				}
 			],
 			"options": {},

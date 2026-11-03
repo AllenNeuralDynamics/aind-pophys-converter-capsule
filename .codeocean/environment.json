@@ -10,7 +10,7 @@
 		"pip3": {
 			"packages": [
 				{
-					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@b0b1815#egg=aind-pophys-converter"
+					"name": "git+https://github.com/AllenNeuralDynamics/aind-pophys-converter.git@v0.2.1#egg=aind-pophys-converter"
 				}
 			],
 			"options": {},
